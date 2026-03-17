@@ -177,9 +177,7 @@ async def callbacks(callback: types.CallbackQuery):
             q = data.split("_")[1]
 
             ydl_opts = {
-                'format': f'bestvideo[height<={q}]+bestaudio/best',
-                'outtmpl': 'video.%(ext)s',
-                'merge_output_format': 'mp4'
+                'format': f'best[height<={q}]'
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
