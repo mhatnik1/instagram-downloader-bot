@@ -20,7 +20,7 @@ user_platform = {}
 user_lang = {}
 user_actions = {}
 
-DONATE_AMOUNT = 10000
+DONATE_AMOUNT = 100
 
 # ===== ПЕРЕВОДЫ =====
 TEXTS = {
