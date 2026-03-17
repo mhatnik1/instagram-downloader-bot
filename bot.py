@@ -1,5 +1,5 @@
-import glob
 import os
+import glob
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
@@ -16,43 +16,42 @@ dp = Dispatcher(bot)
 # ===== ХРАНЕНИЕ =====
 users = set()
 user_data = {}
-user_actions = {}
 user_platform = {}
 user_lang = {}
+user_actions = {}
 
 DONATE_AMOUNT = 10000
 
 # ===== ПЕРЕВОДЫ =====
 TEXTS = {
     "ru": {
-        "start": "🚀 MULTI DOWNLOADER\n\n📥 Выбери платформу\n👥 Уже 1000+ пользователей",
+        "start": "🚀 MULTI DOWNLOADER\n\n📥 Выбери платформу",
         "choose_lang": "🌍 Выбери язык",
         "send_link": "📥 Отправь ссылку",
         "processing": "⏳ Обрабатываю...",
         "error": "❌ Ошибка",
         "choose_quality": "📥 Выбери качество:",
-        "done": "🔥 Готово!\n\n❤️ Бот бесплатный — поддержка по желанию",
+        "done": "🔥 Готово!\n\n❤️ Бот бесплатный",
         "donate": "⭐ Поддержать",
         "share": "📢 Поделиться",
-        "support_text": "💎 Бот бесплатный\nПоддержка по желанию ❤️"
+        "support_text": "💎 Поддержка по желанию ❤️"
     },
     "en": {
-        "start": "🚀 MULTI DOWNLOADER\n\n📥 Choose platform\n👥 1000+ users",
+        "start": "🚀 MULTI DOWNLOADER\n\n📥 Choose platform",
         "choose_lang": "🌍 Choose language",
         "send_link": "📥 Send link",
         "processing": "⏳ Processing...",
         "error": "❌ Error",
         "choose_quality": "📥 Choose quality:",
-        "done": "🔥 Done!\n\n❤️ Bot is free — support optional",
+        "done": "🔥 Done!\n\n❤️ Free bot",
         "donate": "⭐ Support",
         "share": "📢 Share",
-        "support_text": "💎 Bot is free\nSupport if you want ❤️"
+        "support_text": "💎 Support if you want ❤️"
     }
 }
 
 def t(user_id, key):
-    lang = user_lang.get(user_id, "ru")
-    return TEXTS[lang][key]
+    return TEXTS.get(user_lang.get(user_id, "ru"))[key]
 
 # ===== ЯЗЫК =====
 lang_kb = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -65,31 +64,14 @@ async def start(message: types.Message):
 @dp.message_handler(lambda m: m.text in ["🇷🇺 Русский", "🇬🇧 English"])
 async def set_lang(message: types.Message):
     user_id = message.from_user.id
-
-    if "Русский" in message.text:
-        user_lang[user_id] = "ru"
-    else:
-        user_lang[user_id] = "en"
-
+    user_lang[user_id] = "ru" if "Русский" in message.text else "en"
     users.add(user_id)
 
-    kb = get_main_kb(user_id)
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
+    kb.add(t(user_id, "donate"), t(user_id, "share"))
 
     await message.answer(t(user_id, "start"), reply_markup=kb)
-
-# ===== КНОПКИ =====
-def get_main_kb(user_id):
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(
-        KeyboardButton("📸 Instagram"),
-        KeyboardButton("🎵 TikTok"),
-        KeyboardButton("▶️ YouTube")
-    )
-    kb.add(
-        KeyboardButton(t(user_id, "donate")),
-        KeyboardButton(t(user_id, "share"))
-    )
-    return kb
 
 # ===== ПЛАТФОРМА =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
@@ -123,10 +105,7 @@ async def donate_callback(callback: types.CallbackQuery):
 async def share(message: types.Message):
     bot_username = (await bot.get_me()).username
     kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton(
-            t(message.from_user.id, "share"),
-            url=f"https://t.me/{bot_username}"
-        )
+        InlineKeyboardButton("📢 Share", url=f"https://t.me/{bot_username}")
     )
     await message.answer("🚀", reply_markup=kb)
 
@@ -139,59 +118,46 @@ async def handle_link(message: types.Message):
     platform = user_platform.get(user_id)
 
     if not platform:
-        await message.answer("❌")
+        await message.answer("❌ Choose platform first")
         return
 
     await message.answer(t(user_id, "processing"))
 
-try:
-    if data.startswith("video_"):
-        q = data.split("_")[1]
+    try:
+        # ===== YOUTUBE =====
+        if platform == "▶️ YouTube":
+            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                info = ydl.extract_info(message.text, download=False)
 
-        ydl_opts = {
-            'format': f'bestvideo[height<={q}]+bestaudio/best',
-            'outtmpl': 'video.%(ext)s',
-            'merge_output_format': 'mp4'
-        }
+            user_data[user_id] = {"url": message.text, "info": info}
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            kb = InlineKeyboardMarkup(row_width=2)
+            for q in [144, 360, 720]:
+                kb.insert(InlineKeyboardButton(f"{q}p", callback_data=f"video_{q}"))
 
-        import glob
-        video_file = glob.glob("video.*")[0]
+            kb.add(
+                InlineKeyboardButton("MP3", callback_data="mp3"),
+                InlineKeyboardButton("Preview", callback_data="preview")
+            )
 
-        with open(video_file, "rb") as f:
-            await bot.send_video(user_id, f)
+            await message.answer(t(user_id, "choose_quality"), reply_markup=kb)
 
-    elif data == "mp3":
-        ydl_opts = {
-            'format': 'bestaudio',
-            'outtmpl': 'audio.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-            }]
-        }
+        # ===== INSTAGRAM / TIKTOK =====
+        else:
+            ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([message.text])
 
-        import glob
-        audio_file = glob.glob("audio.*")[0]
+            video_file = glob.glob("video.*")[0]
 
-        with open(audio_file, "rb") as f:
-            await bot.send_audio(user_id, f)
-
-except Exception as e:
-    await bot.send_message(user_id, f"❌ Ошибка: {e}")
-
-with open(video_file, "rb") as f:
+            with open(video_file, "rb") as f:
                 await message.answer_video(f)
 
             await after_download(user_id)
 
-    except:
-        await message.answer(t(user_id, "error"))
+    except Exception as e:
+        await message.answer(f"❌ {e}")
 
 # ===== CALLBACK =====
 @dp.callback_query_handler(lambda c: True)
@@ -204,22 +170,25 @@ async def callbacks(callback: types.CallbackQuery):
 
     url = user_data[user_id]["url"]
 
+    await bot.send_message(user_id, "⏳ Downloading...")
+
     try:
         if data.startswith("video_"):
-    q = data.split("_")[1]
-
-    ydl_opts = {
-        'format': f'bestvideo[height<={q}]+bestaudio/best',
-        'outtmpl': 'video.%(ext)s',
-        'merge_output_format': 'mp4'
-    }
             q = data.split("_")[1]
+
             ydl_opts = {
                 'format': f'bestvideo[height<={q}]+bestaudio/best',
                 'outtmpl': 'video.%(ext)s',
                 'merge_output_format': 'mp4'
             }
-            filename = "video.mp4"
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+            video_file = glob.glob("video.*")[0]
+
+            with open(video_file, "rb") as f:
+                await bot.send_video(user_id, f)
 
         elif data == "mp3":
             ydl_opts = {
@@ -230,7 +199,14 @@ async def callbacks(callback: types.CallbackQuery):
                     'preferredcodec': 'mp3',
                 }]
             }
-            filename = "audio.mp3"
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+            audio_file = glob.glob("audio.*")[0]
+
+            with open(audio_file, "rb") as f:
+                await bot.send_audio(user_id, f)
 
         elif data == "preview":
             thumb = user_data[user_id]["info"].get("thumbnail")
@@ -238,19 +214,10 @@ async def callbacks(callback: types.CallbackQuery):
                 await bot.send_photo(user_id, thumb)
             return
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        with open(filename, "rb") as f:
-            if data == "mp3":
-                await bot.send_audio(user_id, f)
-            else:
-                await bot.send_video(user_id, f)
-
         await after_download(user_id)
 
-    except:
-        await bot.send_message(user_id, t(user_id, "error"))
+    except Exception as e:
+        await bot.send_message(user_id, f"❌ {e}")
 
 # ===== ПОСЛЕ СКАЧИВАНИЯ =====
 async def after_download(user_id):
@@ -258,13 +225,13 @@ async def after_download(user_id):
 
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton(t(user_id, "donate"), callback_data="donate"),
-        InlineKeyboardButton(t(user_id, "share"), url=f"https://t.me/{bot_username}")
+        InlineKeyboardButton("⭐ Support", callback_data="donate"),
+        InlineKeyboardButton("📢 Share", url=f"https://t.me/{bot_username}")
     )
 
     await bot.send_message(
         user_id,
-        f"{t(user_id, 'done')}\n\n👥 {len(users)} users",
+        f"🔥 Done!\n👥 {len(users)} users",
         reply_markup=kb
     )
 
