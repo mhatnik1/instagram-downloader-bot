@@ -228,3 +228,7 @@ async def after_download(user_id):
 # ===== RUN =====
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+    @dp.message_handler(content_types=['photo'])
+async def get_file_id(message: types.Message):
+    file_id = message.photo[-1].file_id
+    await message.answer(f"FILE_ID:\n{file_id}")
