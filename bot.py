@@ -4,7 +4,7 @@ import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
     ReplyKeyboardMarkup, InlineKeyboardMarkup,
-    InlineKeyboardButton, LabeledPrice
+    InlineKeyboardButton, LabeledPrice, InputFile
 )
 from aiogram.utils import executor
 
@@ -18,25 +18,7 @@ user_data = {}
 user_platform = {}
 user_lang = {}
 
-TEXTS = {
-    "ru": {
-        "start": "🚀 Бесплатный загрузчик\n\n📥 Выбери платформу",
-        "send_link": "📥 Отправь ссылку",
-        "processing": "⏳ Обрабатываю...",
-        "choose_quality": "📥 Выбери качество:",
-    },
-    "en": {
-        "start": "🚀 Free downloader\n\n📥 Choose platform",
-        "send_link": "📥 Send link",
-        "processing": "⏳ Processing...",
-        "choose_quality": "📥 Choose quality:",
-    }
-}
-
-def t(user_id, key):
-    return TEXTS.get(user_lang.get(user_id, "ru"))[key]
-
-# ===== FIX: УБИРАЕМ WEBHOOK =====
+# ===== УБИРАЕМ WEBHOOK =====
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
 
@@ -57,46 +39,45 @@ async def set_lang(message: types.Message):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
 
-    try:
-        if user_lang[user_id] == "ru":
-            text = (
-                "🔥 Добро пожаловать!\n\n"
-                "🚀 Это быстрый и бесплатный загрузчик\n\n"
-                "📥 Скачивай видео и музыку из:\n"
-                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-                "⚡ Просто отправь ссылку и получи результат за секунды"
-            )
+    # ===== ПЕРСОНАЖ =====
+    if user_lang[user_id] == "ru":
 
-            with open("welcome_ru.jpg", "rb") as photo:
-                await message.answer_photo(photo, caption=text, reply_markup=kb)
+        text = (
+            "👋 Привет! Я Dropix\n\n"
+            "🤖 Твой личный помощник для скачивания контента\n\n"
+            "📥 Я помогу тебе скачать:\n"
+            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+            "⚡ Просто отправь ссылку — и я всё сделаю за тебя\n\n"
+            "🔥 Быстро. Просто. Без лишнего."
+        )
 
-        else:
-            text = (
-                "🔥 Welcome!\n\n"
-                "🚀 This is a fast and free downloader\n\n"
-                "📥 Download videos & music from:\n"
-                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-                "⚡ Just send a link and get your file in seconds"
-            )
+        photo = InputFile("/mnt/data/0C31C239-D120-45A6-9A5D-580525088A1A.jpeg")
 
-            with open("welcome_en.jpg", "rb") as photo:
-                await message.answer_photo(photo, caption=text, reply_markup=kb)
+    else:
 
-    except:
-        # если нет картинки — просто текст
-        await message.answer(text, reply_markup=kb)
+        text = (
+            "👋 Hey! I'm Dropix\n\n"
+            "🤖 Your personal download assistant\n\n"
+            "📥 I can download from:\n"
+            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+            "⚡ Just send me a link — I’ll handle everything\n\n"
+            "🔥 Fast. Simple. No hassle."
+        )
+
+        photo = InputFile("/mnt/data/973C20F9-1D64-449E-9D1C-B596684A9432.jpeg")
+
+    await message.answer_photo(photo, caption=text, reply_markup=kb)
 
 # ===== PLATFORM =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
 async def choose_platform(message: types.Message):
     user_platform[message.from_user.id] = message.text
-    await message.answer(t(message.from_user.id, "send_link"))
+    await message.answer("📥 Send link" if user_lang.get(message.from_user.id) == "en" else "📥 Отправь ссылку")
 
 # ===== LINK =====
 @dp.message_handler(lambda m: "http" in m.text)
 async def handle_link(message: types.Message):
     user_id = message.from_user.id
-    users.add(user_id)
 
     platform = user_platform.get(user_id)
 
@@ -104,7 +85,7 @@ async def handle_link(message: types.Message):
         await message.answer("❌ Choose platform first")
         return
 
-    await message.answer(t(user_id, "processing"))
+    await message.answer("⏳ Processing..." if user_lang.get(user_id) == "en" else "⏳ Обрабатываю...")
 
     try:
         if platform == "▶️ YouTube":
@@ -122,7 +103,7 @@ async def handle_link(message: types.Message):
                 InlineKeyboardButton("Preview", callback_data="preview")
             )
 
-            await message.answer(t(user_id, "choose_quality"), reply_markup=kb)
+            await message.answer("Choose quality:" if user_lang.get(user_id) == "en" else "Выбери качество:", reply_markup=kb)
 
         else:
             ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
@@ -130,17 +111,12 @@ async def handle_link(message: types.Message):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([message.text])
 
-            files = glob.glob("video.*")
-            if not files:
-                await message.answer("❌ Ошибка загрузки")
-                return
+            file = glob.glob("video.*")[0]
 
-            video_file = files[0]
-
-            with open(video_file, "rb") as f:
+            with open(file, "rb") as f:
                 await message.answer_video(f)
 
-            os.remove(video_file)
+            os.remove(file)
             await after_download(user_id)
 
     except Exception as e:
@@ -184,15 +160,12 @@ async def callbacks(callback: types.CallbackQuery):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            files = glob.glob("video.*")
-            if not files:
-                await bot.send_message(user_id, "❌ Ошибка")
-                return
+            file = glob.glob("video.*")[0]
 
-            with open(files[0], "rb") as f:
+            with open(file, "rb") as f:
                 await bot.send_video(user_id, f)
 
-            os.remove(files[0])
+            os.remove(file)
 
         elif data == "mp3":
             ydl_opts = {
@@ -203,15 +176,12 @@ async def callbacks(callback: types.CallbackQuery):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            files = glob.glob("audio.*")
-            if not files:
-                await bot.send_message(user_id, "❌ Ошибка")
-                return
+            file = glob.glob("audio.*")[0]
 
-            with open(files[0], "rb") as f:
+            with open(file, "rb") as f:
                 await bot.send_audio(user_id, f)
 
-            os.remove(files[0])
+            os.remove(file)
 
         elif data == "preview":
             thumb = user_data[user_id]["info"].get("thumbnail")
@@ -232,28 +202,16 @@ async def after_download(user_id):
     kb = InlineKeyboardMarkup(row_width=1)
 
     if lang == "ru":
-        text = (
-            "🔥 Готово!\n\n"
-            "❤️ Бот бесплатный и работает благодаря пользователям\n\n"
-            "🙏 Если тебе помогло — можешь отблагодарить"
-        )
+        text = "🔥 Готово!\n\n🙏 Хочешь поддержать Dropix?"
 
         kb.add(
             InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
-            InlineKeyboardButton("🔥 100⭐ (лучший)", callback_data="donate_100"),
+            InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
             InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
         )
 
-        kb.add(
-            InlineKeyboardButton("📢 Поделиться ботом", url=f"https://t.me/{bot_username}")
-        )
-
     else:
-        text = (
-            "🔥 Done!\n\n"
-            "❤️ This bot is free and supported by users\n\n"
-            "🙏 If it helped you — you can support"
-        )
+        text = "🔥 Done!\n\n🙏 Want to support Dropix?"
 
         kb.add(
             InlineKeyboardButton("❤️ $0.5", callback_data="donate_50"),
@@ -261,9 +219,9 @@ async def after_download(user_id):
             InlineKeyboardButton("👑 $2.5", callback_data="donate_250"),
         )
 
-        kb.add(
-            InlineKeyboardButton("📢 Share bot", url=f"https://t.me/{bot_username}")
-        )
+    kb.add(
+        InlineKeyboardButton("📢 Share bot", url=f"https://t.me/{bot_username}")
+    )
 
     await bot.send_message(user_id, text, reply_markup=kb)
 
