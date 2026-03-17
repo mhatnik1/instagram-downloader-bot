@@ -188,6 +188,13 @@ async def callbacks(callback: types.CallbackQuery):
 
     try:
         if data.startswith("video_"):
+    q = data.split("_")[1]
+
+    ydl_opts = {
+        'format': f'bestvideo[height<={q}]+bestaudio/best',
+        'outtmpl': 'video.%(ext)s',
+        'merge_output_format': 'mp4'
+    }
             q = data.split("_")[1]
             ydl_opts = {
                 'format': f'bestvideo[height<={q}]+bestaudio/best',
