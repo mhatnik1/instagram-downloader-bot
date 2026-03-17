@@ -1,6 +1,7 @@
 import os
 import glob
 import asyncio
+import time
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
@@ -28,8 +29,8 @@ async def worker():
         user_id, func = await queue.get()
         try:
             await func()
-        except Exception as e:
-            await bot.send_message(user_id, f"❌ {e}")
+        except:
+            await bot.send_message(user_id, "⚠️ Временная ошибка, попробуй позже")
         queue.task_done()
 
 # ===== STARTUP =====
@@ -48,7 +49,7 @@ async def start(message: types.Message):
 @dp.message_handler(lambda m: m.text in ["🇷🇺 Русский", "🇬🇧 English"])
 async def set_lang(message: types.Message):
     user_id = message.from_user.id
-    user_lang[user_id] = "ru" if "Русский" in message.text else "en"
+    user_lang[user_id] = "ru"
 
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
@@ -56,9 +57,11 @@ async def set_lang(message: types.Message):
 
     photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
 
-    text = f"👋 Я {BOT_NAME}\n\n📥 Отправь ссылку — я скачаю всё 🚀"
-
-    await message.answer_photo(photo, caption=text, reply_markup=kb)
+    await message.answer_photo(
+        photo,
+        caption=f"👋 Я {BOT_NAME}\n\n📥 Отправь ссылку — я скачаю всё 🚀",
+        reply_markup=kb
+    )
 
 # ===== RESTART =====
 @dp.message_handler(lambda m: m.text == "🔄 Restart")
@@ -68,7 +71,29 @@ async def restart(message: types.Message):
 # ===== PREMIUM =====
 @dp.message_handler(lambda m: m.text == "💎 Premium")
 async def premium(message: types.Message):
-    await message.answer("💎 Premium = без лимитов\n\nНапиши администратору")
+    await message.answer(
+        "💎 Premium доступ:\n\n"
+        "🔥 Без лимитов\n"
+        "⚡ Быстрая загрузка\n\n"
+        "Напиши администратору"
+    )
+
+# ===== LIMIT CHECK =====
+def check_limit(user_id):
+    if user_id in premium_users:
+        return True
+
+    expire = user_data.get(user_id, {}).get("premium_expire", 0)
+
+    if expire > time.time():
+        return True
+
+    count = user_data.get(user_id, {}).get("count", 0)
+
+    if count >= 2:
+        return False
+
+    return True
 
 # ===== LINK =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
@@ -76,12 +101,12 @@ async def handle_link(message: types.Message):
     user_id = message.from_user.id
     url = message.text
 
-    # лимит
-    if user_id not in premium_users:
-        count = user_data.get(user_id, {}).get("count", 0)
-        if count >= 2:
-            await message.answer("💎 Купи Premium для продолжения")
-            return
+    if not check_limit(user_id):
+        await message.answer(
+            "🚫 Лимит достигнут\n\n"
+            "💎 Купи Premium и скачивай без ограничений"
+        )
+        return
 
     msg = await message.answer("⏳ Обрабатываю...")
 
@@ -100,23 +125,62 @@ async def handle_link(message: types.Message):
 
     else:
         async def task():
+            try:
+                ydl_opts = {
+                    'format': 'best',
+                    'outtmpl': 'media.%(ext)s',
+                    'quiet': True
+                }
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+
+                files = glob.glob("media.*")
+
+                for file in files:
+                    with open(file, "rb") as f:
+                        await bot.send_document(user_id, f)
+                    os.remove(file)
+
+            except:
+                await bot.send_message(user_id, "⚠️ Не удалось скачать")
+
+        await queue.put((user_id, task))
+
+# ===== DOWNLOAD FUNCTION =====
+async def download_video(url, quality):
+    formats = [
+        f'bestvideo[height<={quality}]+bestaudio/best',
+        'best[height<=720]',
+        'best'
+    ]
+
+    for fmt in formats:
+        try:
+            await asyncio.sleep(1)
+
             ydl_opts = {
-                'format': 'best',
-                'outtmpl': 'media.%(ext)s',
-                'quiet': True
+                'format': fmt,
+                'merge_output_format': 'mp4',
+                'outtmpl': 'video.%(ext)s',
+                'quiet': True,
+                'cookiefile': 'cookies.txt',
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0'
+                }
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            files = glob.glob("media.*")
+            files = glob.glob("video.*")
+            if files:
+                return files[0]
 
-            for file in files:
-                with open(file, "rb") as f:
-                    await bot.send_document(user_id, f)
-                os.remove(file)
+        except:
+            continue
 
-        await queue.put((user_id, task))
+    return None
 
 # ===== CALLBACK =====
 @dp.callback_query_handler(lambda c: True)
@@ -140,38 +204,11 @@ async def callbacks(callback: types.CallbackQuery):
             if data.startswith("video_"):
                 q = data.split("_")[1]
 
-                try:
-                    ydl_opts = {
-                        'format': f'bestvideo[height<={q}]+bestaudio/best',
-                        'merge_output_format': 'mp4',
-                        'outtmpl': 'video.%(ext)s',
-                        'quiet': True,
-                        'cookiefile': 'cookies.txt',
-                        'http_headers': {
-                            'User-Agent': 'Mozilla/5.0'
-                        }
-                    }
+                file = await download_video(url, q)
 
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-
-                except:
-                    ydl_opts = {
-                        'format': 'best[height<=720]',
-                        'outtmpl': 'video.%(ext)s',
-                        'quiet': True
-                    }
-
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-
-                files = glob.glob("video.*")
-
-                if not files:
-                    await bot.send_message(user_id, "❌ Ошибка")
+                if not file:
+                    await bot.send_message(user_id, "⚠️ Видео временно недоступно")
                     return
-
-                file = files[0]
 
                 with open(file, "rb") as f:
                     await bot.send_video(user_id, f)
@@ -184,24 +221,30 @@ async def callbacks(callback: types.CallbackQuery):
                 await bot.send_message(user_id, "🎧 Доступно аудио:", reply_markup=kb)
 
             elif data == "mp3":
-                ydl_opts = {
-                    'format': 'bestaudio',
-                    'outtmpl': 'audio.%(ext)s',
-                    'quiet': True,
-                    'cookiefile': 'cookies.txt'
-                }
+                try:
+                    ydl_opts = {
+                        'format': 'bestaudio',
+                        'outtmpl': 'audio.%(ext)s',
+                        'quiet': True,
+                        'cookiefile': 'cookies.txt'
+                    }
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
 
-                files = glob.glob("audio.*")
+                    files = glob.glob("audio.*")
 
-                if files:
-                    with open(files[0], "rb") as f:
-                        await bot.send_audio(user_id, f)
-                    os.remove(files[0])
+                    if files:
+                        with open(files[0], "rb") as f:
+                            await bot.send_audio(user_id, f)
+                        os.remove(files[0])
+                        return
 
-            # увеличиваем счётчик
+                except:
+                    pass
+
+                await bot.send_message(user_id, "⚠️ Не удалось скачать аудио")
+
             user_data[user_id]["count"] = user_data[user_id].get("count", 0) + 1
 
         finally:
