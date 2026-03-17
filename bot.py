@@ -64,6 +64,7 @@ async def handle_link(message: types.Message):
     await message.answer("⏳ Обрабатываю...")
 
     try:
+        # ===== YOUTUBE =====
         if "youtube" in url or "youtu.be" in url:
             user_data[user_id] = {"url": url}
 
@@ -76,6 +77,7 @@ async def handle_link(message: types.Message):
 
             await message.answer("Выбери качество:", reply_markup=kb)
 
+        # ===== INSTAGRAM / TIKTOK =====
         else:
             ydl_opts = {
                 'format': 'best',
@@ -87,6 +89,10 @@ async def handle_link(message: types.Message):
                 ydl.download([url])
 
             files = glob.glob("media.*")
+
+            if not files:
+                await message.answer("❌ Ошибка загрузки")
+                return
 
             for file in files:
                 with open(file, "rb") as f:
@@ -104,6 +110,7 @@ async def callbacks(callback: types.CallbackQuery):
     url = user_data.get(user_id, {}).get("url")
 
     try:
+        # ===== VIDEO =====
         if data.startswith("video_"):
             q = data.split("_")[1]
 
@@ -113,11 +120,7 @@ async def callbacks(callback: types.CallbackQuery):
                     'merge_output_format': 'mp4',
                     'outtmpl': 'video.%(ext)s',
                     'quiet': True,
-
-                    # 🔥 cookies
                     'cookiefile': 'cookies.txt',
-
-                    # 🔥 анти-бот
                     'http_headers': {
                         'User-Agent': 'Mozilla/5.0'
                     }
@@ -136,18 +139,26 @@ async def callbacks(callback: types.CallbackQuery):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
 
-            file = glob.glob("video.*")[0]
+            files = glob.glob("video.*")
+
+            if not files:
+                await bot.send_message(user_id, "❌ Ошибка загрузки")
+                return
+
+            file = files[0]
 
             with open(file, "rb") as f:
                 await bot.send_video(user_id, f)
 
             os.remove(file)
 
+            # 🎵 КНОПКА АУДИО
             kb = InlineKeyboardMarkup(row_width=1)
             kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
 
-            await bot.send_message(user_id, " ", reply_markup=kb)
+            await bot.send_message(user_id, "🎧 Доступно аудио:", reply_markup=kb)
 
+        # ===== MP3 =====
         elif data == "mp3":
             ydl_opts = {
                 'format': 'bestaudio',
@@ -159,7 +170,13 @@ async def callbacks(callback: types.CallbackQuery):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            file = glob.glob("audio.*")[0]
+            files = glob.glob("audio.*")
+
+            if not files:
+                await bot.send_message(user_id, "❌ Ошибка аудио")
+                return
+
+            file = files[0]
 
             with open(file, "rb") as f:
                 await bot.send_audio(user_id, f)
