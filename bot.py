@@ -4,7 +4,7 @@ import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
     ReplyKeyboardMarkup, InlineKeyboardMarkup,
-    InlineKeyboardButton, LabeledPrice, InputFile
+    InlineKeyboardButton, InputFile
 )
 from aiogram.utils import executor
 
@@ -14,12 +14,11 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
 user_data = {}
-user_platform = {}
 user_lang = {}
 
 BOT_NAME = "iGramDrop"
 
-# ===== FIX WEBHOOK =====
+# ===== STARTUP =====
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
 
@@ -51,13 +50,7 @@ async def set_lang(message: types.Message):
 
     await message.answer_photo(photo, caption=text, reply_markup=kb)
 
-# ===== PLATFORM =====
-@dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
-async def choose_platform(message: types.Message):
-    user_platform[message.from_user.id] = message.text
-    await message.answer("📥 Send link" if user_lang.get(message.from_user.id)=="en" else "📥 Отправь ссылку")
-
-# ===== DONATE MENU =====
+# ===== DONATE =====
 @dp.message_handler(lambda m: m.text == "💎 Donate")
 async def donate_menu(message: types.Message):
     kb = InlineKeyboardMarkup(row_width=3)
@@ -74,7 +67,7 @@ async def handle_link(message: types.Message):
     user_id = message.from_user.id
     url = message.text
 
-    await message.answer("⏳ Processing..." if user_lang.get(user_id)=="en" else "⏳ Обрабатываю...")
+    await message.answer("⏳ Обрабатываю..." if user_lang.get(user_id)=="ru" else "⏳ Processing...")
 
     try:
         # ===== YOUTUBE =====
@@ -87,23 +80,28 @@ async def handle_link(message: types.Message):
                 InlineKeyboardButton("📺 720p", callback_data="video_720"),
                 InlineKeyboardButton("🔥 1080p", callback_data="video_1080"),
             )
-            kb.add(
-                InlineKeyboardButton("🎵 MP3", callback_data="mp3")
-            )
+            kb.add(InlineKeyboardButton("🎵 MP3", callback_data="mp3"))
 
-            await message.answer("📥 Choose quality:", reply_markup=kb)
+            await message.answer("📥 Choose quality:")
+
+            await message.answer("👇", reply_markup=kb)
 
         # ===== INSTAGRAM / TIKTOK =====
         else:
             ydl_opts = {
                 'format': 'best',
-                'outtmpl': 'media.%(ext)s'
+                'outtmpl': 'media.%(ext)s',
+                'quiet': True
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+                ydl.download([url])
 
             files = glob.glob("media.*")
+
+            if not files:
+                await message.answer("❌ Ошибка загрузки")
+                return
 
             for file in files:
                 with open(file, "rb") as f:
@@ -122,19 +120,20 @@ async def callbacks(callback: types.CallbackQuery):
     data = callback.data
 
     if data.startswith("donate_"):
-        await callback.answer("Thanks ❤️")
+        await callback.answer("❤️ Спасибо!")
         return
 
     url = user_data.get(user_id, {}).get("url")
 
     try:
+        # ===== VIDEO =====
         if data.startswith("video_"):
             q = data.split("_")[1]
 
             ydl_opts = {
-                'format': f'bestvideo[height<={q}]+bestaudio/best',
-                'merge_output_format': 'mp4',
-                'outtmpl': 'video.%(ext)s'
+                'format': f'best[height<={q}]',
+                'outtmpl': 'video.%(ext)s',
+                'quiet': True
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -147,16 +146,18 @@ async def callbacks(callback: types.CallbackQuery):
 
             os.remove(file)
 
-            # 🎵 кнопка аудио после видео
+            # 🎵 кнопка аудио
             kb = InlineKeyboardMarkup()
             kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
 
-            await bot.send_message(user_id, "🎧 Want audio?", reply_markup=kb)
+            await bot.send_message(user_id, "🎧 Скачать аудио?", reply_markup=kb)
 
+        # ===== MP3 =====
         elif data == "mp3":
             ydl_opts = {
                 'format': 'bestaudio',
-                'outtmpl': 'audio.%(ext)s'
+                'outtmpl': 'audio.%(ext)s',
+                'quiet': True
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -187,7 +188,7 @@ async def after_download(user_id):
     )
 
     kb.add(
-        InlineKeyboardButton("📢 Share", url=f"https://t.me/share/url?url=https://t.me/{bot_username}")
+        InlineKeyboardButton("📢 Поделиться", url=f"https://t.me/share/url?url=https://t.me/{bot_username}")
     )
 
     await bot.send_message(
