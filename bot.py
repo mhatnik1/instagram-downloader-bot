@@ -48,7 +48,7 @@ async def set_lang(message: types.Message):
                 "⚡ Просто отправь ссылку — и я всё сделаю за тебя\n\n"
                 "🔥 Быстро. Просто. Без лишнего."
             )
-            photo = InputFile("welcome_ru.jpg")
+            photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
 
         else:
             text = (
@@ -59,7 +59,7 @@ async def set_lang(message: types.Message):
                 "⚡ Just send a link — I’ll handle everything\n\n"
                 "🔥 Fast. Simple. No hassle."
             )
-            photo = InputFile("welcome_en.jpg")
+            photo = InputFile("photo_2026-03-17 17.40.42.jpeg")
 
         await message.answer_photo(photo, caption=text, reply_markup=kb)
 
