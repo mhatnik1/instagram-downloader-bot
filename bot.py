@@ -128,15 +128,28 @@ async def callbacks(callback: types.CallbackQuery):
         if data.startswith("video_"):
             q = data.split("_")[1]
 
-            ydl_opts = {
-                'format': f'bestvideo[height<={q}]+bestaudio/best',
-                'merge_output_format': 'mp4',
-                'outtmpl': 'video.%(ext)s',
-                'quiet': True
-            }
+            try:
+                # пробуем 1080
+                ydl_opts = {
+                    'format': f'bestvideo[height<={q}]+bestaudio/best',
+                    'merge_output_format': 'mp4',
+                    'outtmpl': 'video.%(ext)s',
+                    'quiet': True
+                }
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+
+            except:
+                # fallback 720
+                ydl_opts = {
+                    'format': 'best[height<=720]',
+                    'outtmpl': 'video.%(ext)s',
+                    'quiet': True
+                }
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
 
             file = glob.glob("video.*")[0]
 
@@ -145,7 +158,6 @@ async def callbacks(callback: types.CallbackQuery):
 
             os.remove(file)
 
-            # 🎵 кнопка во всю ширину
             kb = InlineKeyboardMarkup(row_width=1)
             kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
 
