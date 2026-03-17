@@ -1,6 +1,7 @@
 import os
 import glob
 import asyncio
+import random
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
@@ -15,9 +16,19 @@ bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
 user_data = {}
-user_lang = {}
 
 BOT_NAME = "iGramDrop"
+
+# ===== ПРОКСИ =====
+proxies = [
+    "socks5://31.146.84.142:61669",
+    "socks5://132.148.82.125:45605",
+    "http://144.124.227.90:21074",
+    "http://168.195.214.41:8800"
+]
+
+def get_proxy():
+    return random.choice(proxies)
 
 # ===== QUEUE =====
 queue = asyncio.Queue()
@@ -37,33 +48,18 @@ async def on_startup(dp):
     asyncio.create_task(worker())
 
 # ===== START =====
-lang_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-lang_kb.add("🇷🇺 Русский", "🇬🇧 English")
-
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer("🌍 Choose language / Выбери язык", reply_markup=lang_kb)
-
-@dp.message_handler(lambda m: m.text in ["🇷🇺 Русский", "🇬🇧 English"])
-async def set_lang(message: types.Message):
-    user_id = message.from_user.id
-    user_lang[user_id] = "ru"
-
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("📸 Instagram", "🎵 TikTok")
-    kb.row("▶️ YouTube", "💎 Premium")
-    kb.row("🔄 Restart")
+    kb.row("▶️ YouTube", "🔄 Restart")
 
     photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
 
     text = (
         "👋 <b>Добро пожаловать в iGramDrop</b>\n\n"
-        "📥 Скачивай контент:\n"
-        "• Instagram\n"
-        "• TikTok\n"
-        "• YouTube\n\n"
-        "🎬 HD качество\n"
-        "🎧 MP3 без потерь\n\n"
+        "📥 Instagram • TikTok • YouTube\n"
+        "🎬 HD • 🎧 MP3\n\n"
         "🚀 Просто отправь ссылку"
     )
 
@@ -73,16 +69,6 @@ async def set_lang(message: types.Message):
 @dp.message_handler(lambda m: m.text == "🔄 Restart")
 async def restart(message: types.Message):
     await start(message)
-
-# ===== PREMIUM =====
-@dp.message_handler(lambda m: m.text == "💎 Premium")
-async def premium(message: types.Message):
-    await message.answer(
-        "💎 <b>Premium</b>\n\n"
-        "⚡ Быстрее загрузка\n"
-        "🎬 Лучшее качество\n\n"
-        "🚀 Просто пользуйся ботом"
-    )
 
 # ===== LINK =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
@@ -100,9 +86,7 @@ async def handle_link(message: types.Message):
             InlineKeyboardButton("🔥 1080p", callback_data="video_1080"),
             InlineKeyboardButton("📺 720p", callback_data="video_720"),
         )
-        kb.row(
-            InlineKeyboardButton("🎵 MP3", callback_data="mp3")
-        )
+        kb.row(InlineKeyboardButton("🎵 MP3", callback_data="mp3"))
 
         await msg.delete()
         await message.answer("Выбери качество:", reply_markup=kb)
@@ -113,7 +97,8 @@ async def handle_link(message: types.Message):
                 ydl_opts = {
                     'format': 'best',
                     'outtmpl': 'media.%(ext)s',
-                    'quiet': True
+                    'quiet': True,
+                    'proxy': get_proxy()
                 }
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -135,7 +120,6 @@ async def handle_link(message: types.Message):
 async def download_video(url, quality):
     formats = [
         f'bestvideo[height<={quality}]+bestaudio/best',
-        'best[height<=720]',
         'best'
     ]
 
@@ -146,6 +130,8 @@ async def download_video(url, quality):
                 'merge_output_format': 'mp4',
                 'outtmpl': 'video.%(ext)s',
                 'quiet': True,
+                'cookiefile': 'cookies.txt',
+                'proxy': get_proxy(),
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0'
                 }
@@ -206,7 +192,9 @@ async def callbacks(callback: types.CallbackQuery):
                     ydl_opts = {
                         'format': 'bestaudio',
                         'outtmpl': 'audio.%(ext)s',
-                        'quiet': True
+                        'quiet': True,
+                        'cookiefile': 'cookies.txt',
+                        'proxy': get_proxy()
                     }
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -230,10 +218,3 @@ async def callbacks(callback: types.CallbackQuery):
 # ===== RUN =====
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
-    'cookiefile': 'cookies.txt'
-ydl_opts = {
-    'format': 'best',
-    'outtmpl': 'video.%(ext)s',
-    'proxy': 'http://IP:PORT',
-    'cookiefile': 'cookies.txt'
-}
