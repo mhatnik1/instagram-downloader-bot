@@ -189,10 +189,10 @@ if not files:
     await bot.send_message(user_id, "❌ Ошибка загрузки видео")
     return
 
-video_file = files[0]
+with open(video_file, "rb") as f:
+    await bot.send_video(user_id, f)
 
-            with open(video_file, "rb") as f:
-                await bot.send_video(user_id, f)
+os.remove(video_file)
 
         elif data == "mp3":
             ydl_opts = {
