@@ -4,9 +4,9 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
 )
-from aiogram.utils import executor
+import os
 
-TOKEN = os.getenv("8730480600:AAEknl3n3W7Bm9KIz1oZO-aqj5GV6d0uAYs")
+TOKEN = os.getenv("TOKEN")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
