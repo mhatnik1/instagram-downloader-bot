@@ -97,6 +97,6 @@ async def donate(callback: types.CallbackQuery):
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
-    @dp.message_handler(commands=['start'])
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer("Бот работает 🚀")
+    await message.answer("Привет")
