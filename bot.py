@@ -1,7 +1,6 @@
 import os
 import glob
 import asyncio
-import time
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
@@ -17,7 +16,6 @@ dp = Dispatcher(bot)
 
 user_data = {}
 user_lang = {}
-premium_users = set()
 
 BOT_NAME = "iGramDrop"
 
@@ -30,7 +28,7 @@ async def worker():
         try:
             await func()
         except:
-            await bot.send_message(user_id, "⚠️ Временная ошибка, попробуй позже")
+            await bot.send_message(user_id, "⚠️ Ошибка, попробуй позже")
         queue.task_done()
 
 # ===== STARTUP =====
@@ -52,16 +50,24 @@ async def set_lang(message: types.Message):
     user_lang[user_id] = "ru"
 
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
-    kb.add("💎 Premium", "🔄 Restart")
+    kb.row("📸 Instagram", "🎵 TikTok")
+    kb.row("▶️ YouTube", "💎 Premium")
+    kb.row("🔄 Restart")
 
     photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
 
-    await message.answer_photo(
-        photo,
-        caption=f"👋 Я {BOT_NAME}\n\n📥 Отправь ссылку — я скачаю всё 🚀",
-        reply_markup=kb
+    text = (
+        "👋 <b>Добро пожаловать в iGramDrop</b>\n\n"
+        "📥 Скачивай контент:\n"
+        "• Instagram\n"
+        "• TikTok\n"
+        "• YouTube\n\n"
+        "🎬 HD качество\n"
+        "🎧 MP3 без потерь\n\n"
+        "🚀 Просто отправь ссылку"
     )
+
+    await message.answer_photo(photo, caption=text, reply_markup=kb)
 
 # ===== RESTART =====
 @dp.message_handler(lambda m: m.text == "🔄 Restart")
@@ -72,28 +78,11 @@ async def restart(message: types.Message):
 @dp.message_handler(lambda m: m.text == "💎 Premium")
 async def premium(message: types.Message):
     await message.answer(
-        "💎 Premium доступ:\n\n"
-        "🔥 Без лимитов\n"
-        "⚡ Быстрая загрузка\n\n"
-        "Напиши администратору"
+        "💎 <b>Premium</b>\n\n"
+        "⚡ Быстрее загрузка\n"
+        "🎬 Лучшее качество\n\n"
+        "🚀 Просто пользуйся ботом"
     )
-
-# ===== LIMIT CHECK =====
-def check_limit(user_id):
-    if user_id in premium_users:
-        return True
-
-    expire = user_data.get(user_id, {}).get("premium_expire", 0)
-
-    if expire > time.time():
-        return True
-
-    count = user_data.get(user_id, {}).get("count", 0)
-
-    if count >= 2:
-        return False
-
-    return True
 
 # ===== LINK =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
@@ -101,24 +90,19 @@ async def handle_link(message: types.Message):
     user_id = message.from_user.id
     url = message.text
 
-    if not check_limit(user_id):
-        await message.answer(
-            "🚫 Лимит достигнут\n\n"
-            "💎 Купи Premium и скачивай без ограничений"
-        )
-        return
-
     msg = await message.answer("⏳ Обрабатываю...")
 
     if "youtube" in url or "youtu.be" in url:
         user_data[user_id] = {"url": url, "loading": False}
 
         kb = InlineKeyboardMarkup(row_width=2)
-        kb.add(
+        kb.row(
             InlineKeyboardButton("🔥 1080p", callback_data="video_1080"),
             InlineKeyboardButton("📺 720p", callback_data="video_720"),
         )
-        kb.add(InlineKeyboardButton("🎵 MP3", callback_data="mp3"))
+        kb.row(
+            InlineKeyboardButton("🎵 MP3", callback_data="mp3")
+        )
 
         await msg.delete()
         await message.answer("Выбери качество:", reply_markup=kb)
@@ -147,7 +131,7 @@ async def handle_link(message: types.Message):
 
         await queue.put((user_id, task))
 
-# ===== DOWNLOAD FUNCTION =====
+# ===== VIDEO DOWNLOAD =====
 async def download_video(url, quality):
     formats = [
         f'bestvideo[height<={quality}]+bestaudio/best',
@@ -157,14 +141,11 @@ async def download_video(url, quality):
 
     for fmt in formats:
         try:
-            await asyncio.sleep(1)
-
             ydl_opts = {
                 'format': fmt,
                 'merge_output_format': 'mp4',
                 'outtmpl': 'video.%(ext)s',
                 'quiet': True,
-                'cookiefile': 'cookies.txt',
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0'
                 }
@@ -207,7 +188,7 @@ async def callbacks(callback: types.CallbackQuery):
                 file = await download_video(url, q)
 
                 if not file:
-                    await bot.send_message(user_id, "⚠️ Видео временно недоступно")
+                    await bot.send_message(user_id, "⚠️ Видео недоступно")
                     return
 
                 with open(file, "rb") as f:
@@ -215,18 +196,17 @@ async def callbacks(callback: types.CallbackQuery):
 
                 os.remove(file)
 
-                kb = InlineKeyboardMarkup(row_width=1)
+                kb = InlineKeyboardMarkup()
                 kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
 
-                await bot.send_message(user_id, "🎧 Доступно аудио:", reply_markup=kb)
+                await bot.send_message(user_id, "🎧 Аудио:", reply_markup=kb)
 
             elif data == "mp3":
                 try:
                     ydl_opts = {
                         'format': 'bestaudio',
                         'outtmpl': 'audio.%(ext)s',
-                        'quiet': True,
-                        'cookiefile': 'cookies.txt'
+                        'quiet': True
                     }
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -238,14 +218,9 @@ async def callbacks(callback: types.CallbackQuery):
                         with open(files[0], "rb") as f:
                             await bot.send_audio(user_id, f)
                         os.remove(files[0])
-                        return
 
                 except:
-                    pass
-
-                await bot.send_message(user_id, "⚠️ Не удалось скачать аудио")
-
-            user_data[user_id]["count"] = user_data[user_id].get("count", 0) + 1
+                    await bot.send_message(user_id, "⚠️ Ошибка аудио")
 
         finally:
             user_data[user_id]["loading"] = False
