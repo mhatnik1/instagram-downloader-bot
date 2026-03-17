@@ -43,9 +43,9 @@ async def set_lang(message: types.Message):
                       else "photo_2026-03-17 17.40.42.jpeg")
 
     text = (
-        f"👋 Привет! Я {BOT_NAME}\n\n📥 Отправь ссылку и я скачаю всё 🔥"
+        f"👋 Привет! Я {BOT_NAME}\n\n📥 Отправь ссылку"
         if user_lang[user_id]=="ru"
-        else f"👋 Hey! I'm {BOT_NAME}\n\n📥 Send link and I download everything 🔥"
+        else f"👋 Hey! I'm {BOT_NAME}\n\n📥 Send link"
     )
 
     await message.answer_photo(photo, caption=text, reply_markup=kb)
@@ -55,41 +55,27 @@ async def set_lang(message: types.Message):
 async def restart(message: types.Message):
     await start(message)
 
-# ===== DONATE =====
-@dp.message_handler(lambda m: m.text == "💎 Donate")
-async def donate_menu(message: types.Message):
-    kb = InlineKeyboardMarkup(row_width=3)
-    kb.add(
-        InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
-        InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
-        InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
-    )
-    await message.answer("💎 Support project", reply_markup=kb)
-
 # ===== LINK =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
 async def handle_link(message: types.Message):
     user_id = message.from_user.id
     url = message.text
 
-    await message.answer("⏳ Обрабатываю..." if user_lang.get(user_id)=="ru" else "⏳ Processing...")
+    await message.answer("⏳ Обрабатываю...")
 
     try:
-        # ===== YOUTUBE =====
         if "youtube" in url or "youtu.be" in url:
             user_data[user_id] = {"url": url}
 
             kb = InlineKeyboardMarkup(row_width=2)
             kb.add(
-                InlineKeyboardButton("📉 360p", callback_data="video_360"),
-                InlineKeyboardButton("📺 720p", callback_data="video_720"),
                 InlineKeyboardButton("🔥 1080p", callback_data="video_1080"),
+                InlineKeyboardButton("📺 720p", callback_data="video_720"),
             )
             kb.add(InlineKeyboardButton("🎵 MP3", callback_data="mp3"))
 
-            await message.answer("📥 Choose quality:", reply_markup=kb)
+            await message.answer("Выбери качество:", reply_markup=kb)
 
-        # ===== INSTAGRAM / TIKTOK =====
         else:
             ydl_opts = {
                 'format': 'best',
@@ -102,16 +88,10 @@ async def handle_link(message: types.Message):
 
             files = glob.glob("media.*")
 
-            if not files:
-                await message.answer("❌ Ошибка загрузки")
-                return
-
             for file in files:
                 with open(file, "rb") as f:
                     await message.answer_document(f)
                 os.remove(file)
-
-            await after_download(user_id)
 
     except Exception as e:
         await message.answer(f"❌ {e}")
@@ -124,24 +104,29 @@ async def callbacks(callback: types.CallbackQuery):
     url = user_data.get(user_id, {}).get("url")
 
     try:
-        # ===== VIDEO =====
         if data.startswith("video_"):
             q = data.split("_")[1]
 
             try:
-                # пробуем 1080
                 ydl_opts = {
                     'format': f'bestvideo[height<={q}]+bestaudio/best',
                     'merge_output_format': 'mp4',
                     'outtmpl': 'video.%(ext)s',
-                    'quiet': True
+                    'quiet': True,
+
+                    # 🔥 cookies
+                    'cookiefile': 'cookies.txt',
+
+                    # 🔥 анти-бот
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0'
+                    }
                 }
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
 
             except:
-                # fallback 720
                 ydl_opts = {
                     'format': 'best[height<=720]',
                     'outtmpl': 'video.%(ext)s',
@@ -163,12 +148,12 @@ async def callbacks(callback: types.CallbackQuery):
 
             await bot.send_message(user_id, " ", reply_markup=kb)
 
-        # ===== MP3 =====
         elif data == "mp3":
             ydl_opts = {
                 'format': 'bestaudio',
                 'outtmpl': 'audio.%(ext)s',
-                'quiet': True
+                'quiet': True,
+                'cookiefile': 'cookies.txt'
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -181,32 +166,8 @@ async def callbacks(callback: types.CallbackQuery):
 
             os.remove(file)
 
-        await after_download(user_id)
-
     except Exception as e:
         await bot.send_message(user_id, f"❌ {e}")
-
-# ===== AFTER =====
-async def after_download(user_id):
-    bot_username = (await bot.get_me()).username
-
-    kb = InlineKeyboardMarkup(row_width=3)
-
-    kb.add(
-        InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
-        InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
-        InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
-    )
-
-    kb.add(
-        InlineKeyboardButton("📢 Поделиться", url=f"https://t.me/share/url?url=https://t.me/{bot_username}")
-    )
-
-    await bot.send_message(
-        user_id,
-        f"🔥 Готово!\n\n🙏 Хочешь поддержать {BOT_NAME}?",
-        reply_markup=kb
-    )
 
 # ===== RUN =====
 if __name__ == "__main__":
