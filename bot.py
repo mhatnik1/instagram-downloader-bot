@@ -26,7 +26,6 @@ DONATE_AMOUNT = 10000
 TEXTS = {
     "ru": {
         "start": "🚀 MULTI DOWNLOADER\n\n📥 Выбери платформу",
-        "choose_lang": "🌍 Выбери язык",
         "send_link": "📥 Отправь ссылку",
         "processing": "⏳ Обрабатываю...",
         "error": "❌ Ошибка",
@@ -38,7 +37,6 @@ TEXTS = {
     },
     "en": {
         "start": "🚀 MULTI DOWNLOADER\n\n📥 Choose platform",
-        "choose_lang": "🌍 Choose language",
         "send_link": "📥 Send link",
         "processing": "⏳ Processing...",
         "error": "❌ Error",
@@ -124,7 +122,6 @@ async def handle_link(message: types.Message):
     await message.answer(t(user_id, "processing"))
 
     try:
-        # ===== YOUTUBE =====
         if platform == "▶️ YouTube":
             with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
                 info = ydl.extract_info(message.text, download=False)
@@ -142,17 +139,27 @@ async def handle_link(message: types.Message):
 
             await message.answer(t(user_id, "choose_quality"), reply_markup=kb)
 
-        # ===== INSTAGRAM / TIKTOK =====
         else:
-            ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
+            ydl_opts = {
+                'format': 'best',
+                'outtmpl': 'video.%(ext)s'
+            }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([message.text])
 
-            video_file = glob.glob("video.*")[0]
+            files = glob.glob("video.*")
+
+            if not files:
+                await message.answer("❌ Ошибка загрузки видео")
+                return
+
+            video_file = files[0]
 
             with open(video_file, "rb") as f:
                 await message.answer_video(f)
+
+            os.remove(video_file)
 
             await after_download(user_id)
 
@@ -177,7 +184,8 @@ async def callbacks(callback: types.CallbackQuery):
             q = data.split("_")[1]
 
             ydl_opts = {
-                'format': f'best[height<={q}]'
+                'format': f'best[height<={q}]',
+                'outtmpl': 'video.%(ext)s'
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -185,23 +193,21 @@ async def callbacks(callback: types.CallbackQuery):
 
             files = glob.glob("video.*")
 
-if not files:
-    await bot.send_message(user_id, "❌ Ошибка загрузки видео")
-    return
+            if not files:
+                await bot.send_message(user_id, "❌ Ошибка загрузки видео")
+                return
 
-with open(video_file, "rb") as f:
-    await bot.send_video(user_id, f)
+            video_file = files[0]
 
-os.remove(video_file)
+            with open(video_file, "rb") as f:
+                await bot.send_video(user_id, f)
+
+            os.remove(video_file)
 
         elif data == "mp3":
             ydl_opts = {
                 'format': 'bestaudio',
-                'outtmpl': 'audio.%(ext)s',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                }]
+                'outtmpl': 'audio.%(ext)s'
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -209,14 +215,16 @@ os.remove(video_file)
 
             files = glob.glob("audio.*")
 
-if not files:
-    await bot.send_message(user_id, "❌ Ошибка загрузки аудио")
-    return
+            if not files:
+                await bot.send_message(user_id, "❌ Ошибка загрузки аудио")
+                return
 
-audio_file = files[0]
+            audio_file = files[0]
 
             with open(audio_file, "rb") as f:
                 await bot.send_audio(user_id, f)
+
+            os.remove(audio_file)
 
         elif data == "preview":
             thumb = user_data[user_id]["info"].get("thumbnail")
