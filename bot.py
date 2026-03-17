@@ -207,7 +207,13 @@ video_file = files[0]
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            audio_file = glob.glob("audio.*")[0]
+            files = glob.glob("audio.*")
+
+if not files:
+    await bot.send_message(user_id, "❌ Ошибка загрузки аудио")
+    return
+
+audio_file = files[0]
 
             with open(audio_file, "rb") as f:
                 await bot.send_audio(user_id, f)
