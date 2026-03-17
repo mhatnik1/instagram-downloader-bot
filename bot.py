@@ -1,7 +1,5 @@
 import os
 import glob
-import asyncio
-import random
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
@@ -15,52 +13,22 @@ TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
-user_data = {}
-
 BOT_NAME = "iGramDrop"
-
-# ===== ПРОКСИ =====
-proxies = [
-    "socks5://31.146.84.142:61669",
-    "socks5://132.148.82.125:45605",
-    "http://144.124.227.90:21074",
-    "http://168.195.214.41:8800"
-]
-
-def get_proxy():
-    return random.choice(proxies)
-
-# ===== QUEUE =====
-queue = asyncio.Queue()
-
-async def worker():
-    while True:
-        user_id, func = await queue.get()
-        try:
-            await func()
-        except:
-            await bot.send_message(user_id, "⚠️ Ошибка, попробуй позже")
-        queue.task_done()
-
-# ===== STARTUP =====
-async def on_startup(dp):
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(worker())
 
 # ===== START =====
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("📸 Instagram", "🎵 TikTok")
-    kb.row("▶️ YouTube", "🔄 Restart")
+    kb.row("🔄 Restart", "💎 Donate")
 
     photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
 
     text = (
-        "👋 <b>Добро пожаловать в iGramDrop</b>\n\n"
-        "📥 Instagram • TikTok • YouTube\n"
-        "🎬 HD • 🎧 MP3\n\n"
-        "🚀 Просто отправь ссылку"
+        f"👋 <b>{BOT_NAME}</b>\n\n"
+        "📥 Instagram • TikTok\n"
+        "🎬 Фото • Видео • Карусели\n\n"
+        "⚡ Отправь ссылку и я всё скачаю"
     )
 
     await message.answer_photo(photo, caption=text, reply_markup=kb)
@@ -70,151 +38,81 @@ async def start(message: types.Message):
 async def restart(message: types.Message):
     await start(message)
 
+# ===== DONATE =====
+@dp.message_handler(lambda m: m.text == "💎 Donate")
+async def donate(message: types.Message):
+    kb = InlineKeyboardMarkup(row_width=3)
+    kb.add(
+        InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
+        InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
+        InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
+    )
+    await message.answer("💎 Поддержать проект", reply_markup=kb)
+
 # ===== LINK =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
-async def handle_link(message: types.Message):
-    user_id = message.from_user.id
+async def download(message: types.Message):
     url = message.text
+    user_id = message.from_user.id
 
-    msg = await message.answer("⏳ Обрабатываю...")
+    msg = await message.answer("⏳ Скачиваю...")
 
-    if "youtube" in url or "youtu.be" in url:
-        user_data[user_id] = {"url": url, "loading": False}
+    try:
+        ydl_opts = {
+            'outtmpl': 'media.%(ext)s',
+            'format': 'best',
+            'quiet': True,
+            'noplaylist': False
+        }
 
-        kb = InlineKeyboardMarkup(row_width=2)
-        kb.row(
-            InlineKeyboardButton("🔥 1080p", callback_data="video_1080"),
-            InlineKeyboardButton("📺 720p", callback_data="video_720"),
-        )
-        kb.row(InlineKeyboardButton("🎵 MP3", callback_data="mp3"))
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
-        await msg.delete()
-        await message.answer("Выбери качество:", reply_markup=kb)
+        files = glob.glob("media.*")
 
-    else:
-        async def task():
-            try:
-                ydl_opts = {
-                    'format': 'best',
-                    'outtmpl': 'media.%(ext)s',
-                    'quiet': True,
-                    'proxy': get_proxy()
-                }
+        if not files:
+            await msg.edit_text("❌ Не удалось скачать")
+            return
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
+        for file in files:
+            size = os.path.getsize(file)
 
-                files = glob.glob("media.*")
-
-                for file in files:
-                    with open(file, "rb") as f:
-                        await bot.send_document(user_id, f)
-                    os.remove(file)
-
-            except:
-                await bot.send_message(user_id, "⚠️ Не удалось скачать")
-
-        await queue.put((user_id, task))
-
-# ===== VIDEO DOWNLOAD =====
-async def download_video(url, quality):
-    formats = [
-        f'bestvideo[height<={quality}]+bestaudio/best',
-        'best'
-    ]
-
-    for fmt in formats:
-        try:
-            ydl_opts = {
-                'format': fmt,
-                'merge_output_format': 'mp4',
-                'outtmpl': 'video.%(ext)s',
-                'quiet': True,
-                'cookiefile': 'cookies.txt',
-                'proxy': get_proxy(),
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0'
-                }
-            }
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
-            files = glob.glob("video.*")
-            if files:
-                return files[0]
-
-        except:
-            continue
-
-    return None
-
-# ===== CALLBACK =====
-@dp.callback_query_handler(lambda c: True)
-async def callbacks(callback: types.CallbackQuery):
-    await callback.answer()
-
-    user_id = callback.from_user.id
-    data = callback.data
-    url = user_data.get(user_id, {}).get("url")
-
-    if not url:
-        return
-
-    if user_data.get(user_id, {}).get("loading"):
-        return
-
-    user_data[user_id]["loading"] = True
-
-    async def task():
-        try:
-            if data.startswith("video_"):
-                q = data.split("_")[1]
-
-                file = await download_video(url, q)
-
-                if not file:
-                    await bot.send_message(user_id, "⚠️ Видео недоступно")
-                    return
-
-                with open(file, "rb") as f:
+            with open(file, "rb") as f:
+                if size > 49 * 1024 * 1024:
+                    await bot.send_document(user_id, f)
+                else:
                     await bot.send_video(user_id, f)
 
-                os.remove(file)
+            os.remove(file)
 
-                kb = InlineKeyboardMarkup()
-                kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
+        await msg.delete()
 
-                await bot.send_message(user_id, "🎧 Аудио:", reply_markup=kb)
+        # ===== AFTER DOWNLOAD =====
+        kb = InlineKeyboardMarkup(row_width=3)
+        kb.add(
+            InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
+            InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
+            InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
+        )
 
-            elif data == "mp3":
-                try:
-                    ydl_opts = {
-                        'format': 'bestaudio',
-                        'outtmpl': 'audio.%(ext)s',
-                        'quiet': True,
-                        'cookiefile': 'cookies.txt',
-                        'proxy': get_proxy()
-                    }
+        kb.add(
+            InlineKeyboardButton("📢 Share", url=f"https://t.me/{(await bot.get_me()).username}")
+        )
 
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
+        await bot.send_message(
+            user_id,
+            f"🔥 Готово!\n\n🙏 Поддержать {BOT_NAME}?",
+            reply_markup=kb
+        )
 
-                    files = glob.glob("audio.*")
+    except Exception as e:
+        await msg.edit_text("❌ Ошибка скачивания")
 
-                    if files:
-                        with open(files[0], "rb") as f:
-                            await bot.send_audio(user_id, f)
-                        os.remove(files[0])
-
-                except:
-                    await bot.send_message(user_id, "⚠️ Ошибка аудио")
-
-        finally:
-            user_data[user_id]["loading"] = False
-
-    await queue.put((user_id, task))
+# ===== CALLBACK =====
+@dp.callback_query_handler(lambda c: c.data.startswith("donate"))
+async def donate_callback(callback: types.CallbackQuery):
+    await callback.answer("Спасибо ❤️")
 
 # ===== RUN =====
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+    executor.start_polling(dp, skip_updates=True)
