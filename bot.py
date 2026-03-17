@@ -18,22 +18,18 @@ user_data = {}
 user_platform = {}
 user_lang = {}
 
-DONATE_AMOUNT = 100  # ~1$
-
 TEXTS = {
     "ru": {
         "start": "🚀 Бесплатный загрузчик\n\n📥 Выбери платформу",
         "send_link": "📥 Отправь ссылку",
         "processing": "⏳ Обрабатываю...",
         "choose_quality": "📥 Выбери качество:",
-        "thanks": "❤️ Спасибо, что используешь бота"
     },
     "en": {
         "start": "🚀 Free downloader\n\n📥 Choose platform",
         "send_link": "📥 Send link",
         "processing": "⏳ Processing...",
         "choose_quality": "📥 Choose quality:",
-        "thanks": "❤️ Thanks for using the bot"
     }
 }
 
@@ -46,7 +42,7 @@ lang_kb.add("🇷🇺 Русский", "🇬🇧 English")
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer("🌍 Choose language", reply_markup=lang_kb)
+    await message.answer("🌍 Choose language / Выбери язык", reply_markup=lang_kb)
 
 @dp.message_handler(lambda m: m.text in ["🇷🇺 Русский", "🇬🇧 English"])
 async def set_lang(message: types.Message):
@@ -57,7 +53,29 @@ async def set_lang(message: types.Message):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
 
-    await message.answer(t(user_id, "start"), reply_markup=kb)
+    if user_lang[user_id] == "ru":
+        text = (
+            "🔥 Добро пожаловать!\n\n"
+            "🚀 Это быстрый и бесплатный загрузчик\n\n"
+            "📥 Скачивай видео и музыку из:\n"
+            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+            "⚡ Просто отправь ссылку и получи результат за секунды"
+        )
+
+        with open("welcome_ru.jpg", "rb") as photo:
+            await message.answer_photo(photo, caption=text, reply_markup=kb)
+
+    else:
+        text = (
+            "🔥 Welcome!\n\n"
+            "🚀 This is a fast and free downloader\n\n"
+            "📥 Download videos & music from:\n"
+            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+            "⚡ Just send a link and get your file in seconds"
+        )
+
+        with open("welcome_en.jpg", "rb") as photo:
+            await message.answer_photo(photo, caption=text, reply_markup=kb)
 
 # ===== PLATFORM =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
@@ -125,15 +143,18 @@ async def callbacks(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
-    if data.startswith("donate"):
+    # ===== ДОНАТ =====
+    if data.startswith("donate_"):
+        amount = int(data.split("_")[1])
+
         await bot.send_invoice(
             chat_id=user_id,
             title="Support ❤️",
-            description="Спасибо за поддержку",
-            payload="donate",
+            description="Thanks for support ❤️",
+            payload=f"donate_{amount}",
             provider_token="",
             currency="XTR",
-            prices=[LabeledPrice(label="Support", amount=DONATE_AMOUNT)],
+            prices=[LabeledPrice(label="Support", amount=amount)],
             start_parameter="donate"
         )
         return
@@ -199,30 +220,52 @@ async def callbacks(callback: types.CallbackQuery):
     except Exception as e:
         await bot.send_message(user_id, f"❌ {e}")
 
-# ===== УМНАЯ МОНЕТИЗАЦИЯ =====
+# ===== МОНЕТИЗАЦИЯ =====
 async def after_download(user_id):
     bot_username = (await bot.get_me()).username
-
-    text = (
-        "🔥 Готово!\n\n"
-        "❤️ Бот бесплатный и работает благодаря пользователям\n\n"
-        "🙏 Если тебе помогло — можешь отблагодарить\n"
-        "Это сильно помогает поддерживать сервис"
-    )
+    lang = user_lang.get(user_id, "ru")
 
     kb = InlineKeyboardMarkup(row_width=1)
 
-    kb.add(
-        InlineKeyboardButton("❤️ Отблагодарить ($1)", callback_data="donate")
-    )
+    if lang == "ru":
+        text = (
+            "🔥 Готово!\n\n"
+            "❤️ Бот бесплатный и работает благодаря пользователям\n\n"
+            "🙏 Если тебе помогло — можешь отблагодарить\n"
+            "Даже небольшой донат помогает поддерживать сервис"
+        )
 
-    kb.add(
-        InlineKeyboardButton("📢 Поделиться ботом", url=f"https://t.me/{bot_username}")
-    )
+        kb.add(
+            InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
+            InlineKeyboardButton("🔥 100⭐ (лучший)", callback_data="donate_100"),
+            InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
+        )
+
+        kb.add(
+            InlineKeyboardButton("📢 Поделиться ботом", url=f"https://t.me/{bot_username}")
+        )
+
+    else:
+        text = (
+            "🔥 Done!\n\n"
+            "❤️ This bot is free and supported by users\n\n"
+            "🙏 If it helped you — you can support\n"
+            "Even a small tip makes a difference"
+        )
+
+        kb.add(
+            InlineKeyboardButton("❤️ $0.5", callback_data="donate_50"),
+            InlineKeyboardButton("🔥 $1 (most popular)", callback_data="donate_100"),
+            InlineKeyboardButton("👑 $2.5", callback_data="donate_250"),
+        )
+
+        kb.add(
+            InlineKeyboardButton("📢 Share bot", url=f"https://t.me/{bot_username}")
+        )
 
     await bot.send_message(user_id, text, reply_markup=kb)
 
-# ===== ЗАПУСК =====
+# ===== RUN =====
 if __name__ == "__main__":
     while True:
         try:
