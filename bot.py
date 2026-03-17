@@ -1,180 +1,99 @@
-import asyncio
-import instaloader
-import requests
 import os
-
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
+)
+from aiogram.utils import executor
 
-TOKEN = "8730480600:AAHh_ZI7_hzQDAtktFLH-xlmF6MS0cXRxNM"
-BOT_USERNAME = "@iGramDrop_Bot"
+TOKEN = os.getenv("8730480600:AAEknl3n3W7Bm9KIz1oZO-aqj5GV6d0uAYs")
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-L = instaloader.Instaloader()
+BOT_USERNAME = "@iGramDrop_Bot"  # ← сюда вставь username без @
 
-users = set()
-mode = {}
 
-# Главное меню
-start_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="📷 Скачать фото", callback_data="photo")],
-        [InlineKeyboardButton(text="🎬 Скачать видео / Reels", callback_data="video")],
-        [InlineKeyboardButton(text="1⭐ Поддержать", callback_data="donate")],
-        [InlineKeyboardButton(text="🔗 Поделиться ботом", url=f"https://t.me/{BOT_USERNAME}")]
-    ]
-)
-
-# Кнопки под файлом
-share_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="1⭐ Поддержать", callback_data="donate")],
-        [InlineKeyboardButton(text="🔗 Поделиться ботом", url=f"https://t.me/{BOT_USERNAME}")]
-    ]
+# 🔹 Главное меню (нижние кнопки)
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton("📥 Скачать"), KeyboardButton("ℹ️ Помощь")],
+    ],
+    resize_keyboard=True
 )
 
 
-@dp.message(Command("start"))
+# 🔹 Кнопки под сообщением
+inline_menu = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="⭐ Поддержать", callback_data="donate_menu")],
+    [InlineKeyboardButton(
+        text="📨 Поделиться ботом",
+        url=f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}&text=🔥 Попробуй этого бота для скачивания Instagram!"
+    )]
+])
+
+
+# 🔹 Донат кнопки
+donate_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    [
+        InlineKeyboardButton(text="⭐ 1", callback_data="donate_1"),
+        InlineKeyboardButton(text="⭐ 5", callback_data="donate_5")
+    ],
+    [
+        InlineKeyboardButton(text="⭐ 10", callback_data="donate_10"),
+        InlineKeyboardButton(text="⭐ 50", callback_data="donate_50")
+    ]
+])
+
+
+# 🚀 START
+@dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-
-    users.add(message.from_user.id)
-
     await message.answer(
-        "👋 Добро пожаловать в *iGramDrop*\n\n"
-        "📥 Скачивайте фото и видео из Instagram\n"
-        "⚡ Просто отправьте ссылку\n\n"
-        f"👥 Пользователей: {len(users)}",
-        reply_markup=start_keyboard,
-        parse_mode="Markdown"
+        "👋 Отправь ссылку на Instagram и получи файл\n\n👇 Выбери действие:",
+        reply_markup=main_keyboard
     )
+    await message.answer("Выбери:", reply_markup=inline_menu)
 
 
-@dp.callback_query(lambda c: c.data == "photo")
-async def choose_photo(callback: types.CallbackQuery):
+# 📥 Скачать
+@dp.message_handler(lambda message: message.text == "📥 Скачать")
+async def download(message: types.Message):
+    await message.answer("📩 Отправь ссылку на Instagram")
 
-    mode[callback.from_user.id] = "photo"
 
+# ℹ️ Помощь
+@dp.message_handler(lambda message: message.text == "ℹ️ Помощь")
+async def help_cmd(message: types.Message):
+    await message.answer("Просто отправь ссылку Instagram 👍")
+
+
+# ⭐ Меню доната
+@dp.callback_query_handler(lambda c: c.data == "donate_menu")
+async def donate_menu(callback: types.CallbackQuery):
     await callback.message.answer(
-        "📷 Отправьте ссылку на фото из Instagram"
+        "❤️ Поддержи проект:",
+        reply_markup=donate_keyboard
     )
 
-    await callback.answer()
 
-
-@dp.callback_query(lambda c: c.data == "video")
-async def choose_video(callback: types.CallbackQuery):
-
-    mode[callback.from_user.id] = "video"
-
-    await callback.message.answer(
-        "🎬 Отправьте ссылку на видео или Reels"
-    )
-
-    await callback.answer()
-
-
-# Донат Telegram Stars
-@dp.callback_query(lambda c: c.data == "donate")
+# ⭐ Оплата
+@dp.callback_query_handler(lambda c: c.data.startswith("donate_"))
 async def donate(callback: types.CallbackQuery):
+    amount = int(callback.data.split("_")[1])
 
-    prices = [types.LabeledPrice(label="Support", amount=1)]
+    prices = [LabeledPrice(label="Support", amount=amount)]
 
     await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="Поддержать бота ⭐",
-        description="Отправьте 1 Telegram Star чтобы поддержать развитие бота",
-        payload="donate-stars",
+        chat_id=callback.message.chat.id,
+        title="Support ❤️",
+        description="Спасибо за поддержку!",
+        payload="donate",
         provider_token="",
         currency="XTR",
         prices=prices
     )
 
-    await callback.answer()
-
-
-# Обязательная часть для оплаты
-@dp.pre_checkout_query()
-async def pre_checkout_query(pre_checkout_query: types.PreCheckoutQuery):
-
-    await bot.answer_pre_checkout_query(
-        pre_checkout_query.id,
-        ok=True
-    )
-
-
-# Подтверждение оплаты
-@dp.message(lambda message: message.successful_payment)
-async def successful_payment(message: types.Message):
-
-    await message.answer(
-        "⭐ Спасибо за поддержку!\n\n"
-        "Вы отправили 1 Telegram Star ❤️"
-    )
-
-
-# Скачивание Instagram
-@dp.message()
-async def download(message: types.Message):
-
-    if message.from_user.id not in mode:
-        await message.answer("Нажмите /start чтобы начать")
-        return
-
-    url = message.text
-
-    if "instagram.com" not in url:
-        await message.answer("❌ Отправьте правильную ссылку Instagram")
-        return
-
-    try:
-
-        shortcode = url.split("/")[-2]
-
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
-
-        if post.is_video:
-            media_url = post.video_url
-            filename = "video.mp4"
-        else:
-            media_url = post.url
-            filename = "photo.jpg"
-
-        r = requests.get(media_url)
-
-        with open(filename, "wb") as f:
-            f.write(r.content)
-
-        if post.is_video:
-
-            await message.answer_video(
-                types.FSInputFile(filename),
-                reply_markup=share_keyboard
-            )
-
-        else:
-
-            await message.answer_photo(
-                types.FSInputFile(filename),
-                reply_markup=share_keyboard
-            )
-
-        os.remove(filename)
-
-    except Exception as e:
-        print(e)
-
-        await message.answer("❌ Ошибка скачивания")
-
-
-async def main():
-
-    print("Бот запущен 🚀")
-
-    await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    executor.start_polling(dp, skip_updates=True)
