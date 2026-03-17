@@ -37,7 +37,7 @@ async def set_lang(message: types.Message):
 
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
-    kb.add("💎 Donate")
+    kb.add("💎 Donate", "🔄 Restart")
 
     photo = InputFile("photo_2026-03-17 17.40.44.jpeg" if user_lang[user_id]=="ru"
                       else "photo_2026-03-17 17.40.42.jpeg")
@@ -49,6 +49,11 @@ async def set_lang(message: types.Message):
     )
 
     await message.answer_photo(photo, caption=text, reply_markup=kb)
+
+# ===== RESTART =====
+@dp.message_handler(lambda m: m.text == "🔄 Restart")
+async def restart(message: types.Message):
+    await start(message)
 
 # ===== DONATE =====
 @dp.message_handler(lambda m: m.text == "💎 Donate")
@@ -82,9 +87,7 @@ async def handle_link(message: types.Message):
             )
             kb.add(InlineKeyboardButton("🎵 MP3", callback_data="mp3"))
 
-            await message.answer("📥 Choose quality:")
-
-            await message.answer("👇", reply_markup=kb)
+            await message.answer("📥 Choose quality:", reply_markup=kb)
 
         # ===== INSTAGRAM / TIKTOK =====
         else:
@@ -118,11 +121,6 @@ async def handle_link(message: types.Message):
 async def callbacks(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
-
-    if data.startswith("donate_"):
-        await callback.answer("❤️ Спасибо!")
-        return
-
     url = user_data.get(user_id, {}).get("url")
 
     try:
@@ -131,7 +129,8 @@ async def callbacks(callback: types.CallbackQuery):
             q = data.split("_")[1]
 
             ydl_opts = {
-                'format': f'best[height<={q}]',
+                'format': f'bestvideo[height<={q}]+bestaudio/best',
+                'merge_output_format': 'mp4',
                 'outtmpl': 'video.%(ext)s',
                 'quiet': True
             }
@@ -146,11 +145,11 @@ async def callbacks(callback: types.CallbackQuery):
 
             os.remove(file)
 
-            # 🎵 кнопка аудио
-            kb = InlineKeyboardMarkup()
+            # 🎵 кнопка во всю ширину
+            kb = InlineKeyboardMarkup(row_width=1)
             kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
 
-            await bot.send_message(user_id, "🎧 Скачать аудио?", reply_markup=kb)
+            await bot.send_message(user_id, " ", reply_markup=kb)
 
         # ===== MP3 =====
         elif data == "mp3":
@@ -175,7 +174,7 @@ async def callbacks(callback: types.CallbackQuery):
     except Exception as e:
         await bot.send_message(user_id, f"❌ {e}")
 
-# ===== AFTER DOWNLOAD =====
+# ===== AFTER =====
 async def after_download(user_id):
     bot_username = (await bot.get_me()).username
 
