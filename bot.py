@@ -1,8 +1,9 @@
 import os
+import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 )
 from aiogram.utils import executor
 
@@ -11,99 +12,133 @@ TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-BOT_USERNAME = "@iGramDrop_Bot"  # ← сюда вставь username без @
+ADMIN_ID = 5151695449  # <-- ВСТАВЬ СВОЙ ID
 
+settings = {
+    "donate_amount": 10000
+}
 
-# 🔹 Главное меню (нижние кнопки)
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton("📥 Скачать"), KeyboardButton("ℹ️ Помощь")],
-    ],
-    resize_keyboard=True
+users = set()
+
+# ===== КНОПКИ =====
+
+platform_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+platform_keyboard.add(
+    KeyboardButton("📸 Instagram"),
+    KeyboardButton("🎵 TikTok"),
+    KeyboardButton("▶️ YouTube")
+)
+platform_keyboard.add(
+    KeyboardButton("⭐ Поддержать"),
+    KeyboardButton("📢 Поделиться")
 )
 
-
-# 🔹 Кнопки под сообщением
-inline_menu = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="⭐ Поддержать", callback_data="donate_menu")],
-    [InlineKeyboardButton(
-        text="📨 Поделиться ботом",
-        url=f"https://t.me/share/url?url=https://t.me/{BOT_USERNAME}&text=🔥 Попробуй этого бота для скачивания Instagram!"
-    )]
-])
-
-
-# 🔹 Донат кнопки
-donate_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [
-        InlineKeyboardButton(text="⭐ 1", callback_data="donate_1"),
-        InlineKeyboardButton(text="⭐ 5", callback_data="donate_5")
-    ],
-    [
-        InlineKeyboardButton(text="⭐ 10", callback_data="donate_10"),
-        InlineKeyboardButton(text="⭐ 50", callback_data="donate_50")
-    ]
-])
-
-
-# 🚀 START
-@dp.message_handler(commands=["start"])
+# ===== START =====
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
+    users.add(message.from_user.id)
+
     await message.answer(
-        "👋 Отправь ссылку на Instagram и получи файл\n\n👇 Выбери действие:",
-        reply_markup=main_keyboard
-    )
-    await message.answer("Выбери:", reply_markup=inline_menu)
-
-
-# 📥 Скачать
-@dp.message_handler(lambda message: message.text == "📥 Скачать")
-async def download(message: types.Message):
-    await message.answer("📩 Отправь ссылку на Instagram")
-
-
-# ℹ️ Помощь
-@dp.message_handler(lambda message: message.text == "ℹ️ Помощь")
-async def help_cmd(message: types.Message):
-    await message.answer("Просто отправь ссылку Instagram 👍")
-
-
-# ⭐ Меню доната
-@dp.callback_query_handler(lambda c: c.data == "donate_menu")
-async def donate_menu(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "❤️ Поддержи проект:",
-        reply_markup=donate_keyboard
+        "🚀 Выбери платформу:\n\n"
+        "📸 Instagram\n🎵 TikTok\n▶️ YouTube\n\n"
+        "⬇️ Скачивай в максимальном качестве",
+        reply_markup=platform_keyboard
     )
 
+# ===== ДОНАТ =====
+@dp.message_handler(lambda m: m.text == "⭐ Поддержать")
+async def donate(message: types.Message):
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("⭐ Поддержать", callback_data="donate")
+    )
 
-# ⭐ Оплата
-@dp.callback_query_handler(lambda c: c.data.startswith("donate_"))
-async def donate(callback: types.CallbackQuery):
-    amount = int(callback.data.split("_")[1])
+    await message.answer(
+        "💎 Бот бесплатный\nПоддержка по желанию ❤️",
+        reply_markup=kb
+    )
 
-    prices = [LabeledPrice(label="Support", amount=amount)]
-
+@dp.callback_query_handler(lambda c: c.data == "donate")
+async def donate_handler(callback_query: types.CallbackQuery):
     await bot.send_invoice(
-        chat_id=callback.message.chat.id,
-        title="Support ❤️",
-        description="Спасибо за поддержку!",
+        chat_id=callback_query.from_user.id,
+        title="Поддержка",
+        description="Спасибо ❤️",
         payload="donate",
         provider_token="",
         currency="XTR",
-        prices=prices
+        prices=[LabeledPrice(label="Поддержка", amount=settings["donate_amount"])],
+        start_parameter="donate"
     )
 
+# ===== ПОДЕЛИТЬСЯ =====
+@dp.message_handler(lambda m: m.text == "📢 Поделиться")
+async def share(message: types.Message):
+    bot_username = (await bot.get_me()).username
 
-    if __name__ == "__main__":
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton(
+            "📢 Отправить другу",
+            url=f"https://t.me/{bot_username}"
+        )
+    )
+
+    await message.answer("Поделись ботом 🚀", reply_markup=kb)
+
+# ===== ВЫБОР ПЛАТФОРМЫ =====
+user_platform = {}
+
+@dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
+async def choose_platform(message: types.Message):
+    user_platform[message.from_user.id] = message.text
+
+    await message.answer("📥 Отправь ссылку")
+
+# ===== СКАЧИВАНИЕ =====
+def download_video(url):
+    ydl_opts = {
+        'outtmpl': 'video.%(ext)s',
+        'format': 'best'
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    return "video.mp4"
+
+@dp.message_handler(lambda m: "http" in m.text)
+async def download_handler(message: types.Message):
+    users.add(message.from_user.id)
+
+    await message.answer("⏳ Загружаю...")
+
+    try:
+        file_path = download_video(message.text)
+
+        with open(file_path, "rb") as video:
+            await message.answer_video(video)
+
+        # КНОПКА ШАРИНГА
+        bot_username = (await bot.get_me()).username
+
+        kb = InlineKeyboardMarkup().add(
+            InlineKeyboardButton(
+                "📢 Поделиться ботом",
+                url=f"https://t.me/{bot_username}"
+            )
+        )
+
+        await message.answer(
+            "🔥 Понравилось? Поделись с другом:",
+            reply_markup=kb
+        )
+
+    except Exception as e:
+        await message.answer("❌ Ошибка загрузки")
+
+# ===== ЗАПУСК =====
+if __name__ == "__main__":
     while True:
         try:
             executor.start_polling(dp, skip_updates=True)
         except Exception as e:
             print("Ошибка:", e)
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    await message.answer("Привет")
-import logging
-
-logging.basicConfig(level=logging.INFO)
