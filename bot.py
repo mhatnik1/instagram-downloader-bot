@@ -231,3 +231,9 @@ async def callbacks(callback: types.CallbackQuery):
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
     'cookiefile': 'cookies.txt'
+ydl_opts = {
+    'format': 'best',
+    'outtmpl': 'video.%(ext)s',
+    'proxy': 'http://IP:PORT',
+    'cookiefile': 'cookies.txt'
+}
