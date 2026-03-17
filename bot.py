@@ -13,10 +13,11 @@ TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-users = set()
 user_data = {}
 user_platform = {}
 user_lang = {}
+
+BOT_NAME = "iGramDrop"
 
 # ===== FIX WEBHOOK =====
 async def on_startup(dp):
@@ -37,97 +38,78 @@ async def set_lang(message: types.Message):
 
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
+    kb.add("💎 Donate")
 
-    try:
-        if user_lang[user_id] == "ru":
-            text = (
-                "👋 Привет! Я Dropix\n\n"
-                "🤖 Твой личный помощник для скачивания контента\n\n"
-                "📥 Я помогу скачать с:\n"
-                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-                "⚡ Просто отправь ссылку — и я всё сделаю за тебя\n\n"
-                "🔥 Быстро. Просто. Без лишнего."
-            )
-            photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
+    photo = InputFile("photo_2026-03-17 17.40.44.jpeg" if user_lang[user_id]=="ru"
+                      else "photo_2026-03-17 17.40.42.jpeg")
 
-        else:
-            text = (
-                "👋 Hey! I'm Dropix\n\n"
-                "🤖 Your personal download assistant\n\n"
-                "📥 I can download from:\n"
-                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-                "⚡ Just send a link — I’ll handle everything\n\n"
-                "🔥 Fast. Simple. No hassle."
-            )
-            photo = InputFile("photo_2026-03-17 17.40.42.jpeg")
+    text = (
+        f"👋 Привет! Я {BOT_NAME}\n\n📥 Отправь ссылку и я скачаю всё 🔥"
+        if user_lang[user_id]=="ru"
+        else f"👋 Hey! I'm {BOT_NAME}\n\n📥 Send link and I download everything 🔥"
+    )
 
-        await message.answer_photo(photo, caption=text, reply_markup=kb)
-
-    except Exception as e:
-        await message.answer(f"⚠️ Image error: {e}\n\n{text}", reply_markup=kb)
+    await message.answer_photo(photo, caption=text, reply_markup=kb)
 
 # ===== PLATFORM =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
 async def choose_platform(message: types.Message):
     user_platform[message.from_user.id] = message.text
+    await message.answer("📥 Send link" if user_lang.get(message.from_user.id)=="en" else "📥 Отправь ссылку")
 
-    if user_lang.get(message.from_user.id) == "en":
-        await message.answer("📥 Send link")
-    else:
-        await message.answer("📥 Отправь ссылку")
+# ===== DONATE MENU =====
+@dp.message_handler(lambda m: m.text == "💎 Donate")
+async def donate_menu(message: types.Message):
+    kb = InlineKeyboardMarkup(row_width=3)
+    kb.add(
+        InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
+        InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
+        InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
+    )
+    await message.answer("💎 Support project", reply_markup=kb)
 
 # ===== LINK =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
 async def handle_link(message: types.Message):
     user_id = message.from_user.id
+    url = message.text
 
-    platform = user_platform.get(user_id)
-
-    if not platform:
-        await message.answer("❌ Choose platform first")
-        return
-
-    if user_lang.get(user_id) == "en":
-        await message.answer("⏳ Processing...")
-    else:
-        await message.answer("⏳ Обрабатываю...")
+    await message.answer("⏳ Processing..." if user_lang.get(user_id)=="en" else "⏳ Обрабатываю...")
 
     try:
-        if platform == "▶️ YouTube":
-            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-                info = ydl.extract_info(message.text, download=False)
-
-            user_data[user_id] = {"url": message.text, "info": info}
+        # ===== YOUTUBE =====
+        if "youtube" in url or "youtu.be" in url:
+            user_data[user_id] = {"url": url}
 
             kb = InlineKeyboardMarkup(row_width=2)
-            for q in [144, 360, 720]:
-                kb.insert(InlineKeyboardButton(f"{q}p", callback_data=f"video_{q}"))
-
             kb.add(
-                InlineKeyboardButton("MP3", callback_data="mp3"),
-                InlineKeyboardButton("Preview", callback_data="preview")
+                InlineKeyboardButton("📉 360p", callback_data="video_360"),
+                InlineKeyboardButton("📺 720p", callback_data="video_720"),
+                InlineKeyboardButton("🔥 1080p", callback_data="video_1080"),
+            )
+            kb.add(
+                InlineKeyboardButton("🎵 MP3", callback_data="mp3")
             )
 
-            if user_lang.get(user_id) == "en":
-                await message.answer("📥 Choose quality:", reply_markup=kb)
-            else:
-                await message.answer("📥 Выбери качество:", reply_markup=kb)
+            await message.answer("📥 Choose quality:", reply_markup=kb)
 
+        # ===== INSTAGRAM / TIKTOK =====
         else:
-            ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
+            ydl_opts = {
+                'format': 'best',
+                'outtmpl': 'media.%(ext)s'
+            }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([message.text])
+                info = ydl.extract_info(url, download=True)
 
-            files = glob.glob("video.*")
-            if not files:
-                await message.answer("❌ Ошибка загрузки")
-                return
+            files = glob.glob("media.*")
 
-            with open(files[0], "rb") as f:
-                await message.answer_video(f)
+            for file in files:
+                with open(file, "rb") as f:
+                    await message.answer_document(f)
+                os.remove(file)
 
-            os.remove(files[0])
             await after_download(user_id)
 
     except Exception as e:
@@ -140,31 +122,18 @@ async def callbacks(callback: types.CallbackQuery):
     data = callback.data
 
     if data.startswith("donate_"):
-        amount = int(data.split("_")[1])
-
-        await bot.send_invoice(
-            chat_id=user_id,
-            title="Support ❤️",
-            description="Thanks for support ❤️",
-            payload=f"donate_{amount}",
-            provider_token="",
-            currency="XTR",
-            prices=[LabeledPrice(label="Support", amount=amount)],
-            start_parameter="donate"
-        )
+        await callback.answer("Thanks ❤️")
         return
 
-    if user_id not in user_data:
-        return
-
-    url = user_data[user_id]["url"]
+    url = user_data.get(user_id, {}).get("url")
 
     try:
         if data.startswith("video_"):
             q = data.split("_")[1]
 
             ydl_opts = {
-                'format': f'best[height<={q}]',
+                'format': f'bestvideo[height<={q}]+bestaudio/best',
+                'merge_output_format': 'mp4',
                 'outtmpl': 'video.%(ext)s'
             }
 
@@ -177,6 +146,12 @@ async def callbacks(callback: types.CallbackQuery):
                 await bot.send_video(user_id, f)
 
             os.remove(file)
+
+            # 🎵 кнопка аудио после видео
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("🎵 Скачать аудио", callback_data="mp3"))
+
+            await bot.send_message(user_id, "🎧 Want audio?", reply_markup=kb)
 
         elif data == "mp3":
             ydl_opts = {
@@ -194,12 +169,6 @@ async def callbacks(callback: types.CallbackQuery):
 
             os.remove(file)
 
-        elif data == "preview":
-            thumb = user_data[user_id]["info"].get("thumbnail")
-            if thumb:
-                await bot.send_photo(user_id, thumb)
-            return
-
         await after_download(user_id)
 
     except Exception as e:
@@ -208,30 +177,24 @@ async def callbacks(callback: types.CallbackQuery):
 # ===== AFTER DOWNLOAD =====
 async def after_download(user_id):
     bot_username = (await bot.get_me()).username
-    lang = user_lang.get(user_id, "ru")
 
-    kb = InlineKeyboardMarkup(row_width=1)
-
-    if lang == "ru":
-        text = "🔥 Готово!\n\n🙏 Хочешь поддержать Dropix?"
-        kb.add(
-            InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
-            InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
-            InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
-        )
-    else:
-        text = "🔥 Done!\n\n🙏 Want to support Dropix?"
-        kb.add(
-            InlineKeyboardButton("❤️ $0.5", callback_data="donate_50"),
-            InlineKeyboardButton("🔥 $1", callback_data="donate_100"),
-            InlineKeyboardButton("👑 $2.5", callback_data="donate_250"),
-        )
+    kb = InlineKeyboardMarkup(row_width=3)
 
     kb.add(
-        InlineKeyboardButton("📢 Share bot", url=f"https://t.me/{bot_username}")
+        InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
+        InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
+        InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
     )
 
-    await bot.send_message(user_id, text, reply_markup=kb)
+    kb.add(
+        InlineKeyboardButton("📢 Share", url=f"https://t.me/share/url?url=https://t.me/{bot_username}")
+    )
+
+    await bot.send_message(
+        user_id,
+        f"🔥 Готово!\n\n🙏 Хочешь поддержать {BOT_NAME}?",
+        reply_markup=kb
+    )
 
 # ===== RUN =====
 if __name__ == "__main__":
