@@ -18,7 +18,7 @@ user_data = {}
 user_platform = {}
 user_lang = {}
 
-# ===== УБИРАЕМ WEBHOOK =====
+# ===== FIX WEBHOOK =====
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
 
@@ -34,48 +34,50 @@ async def start(message: types.Message):
 async def set_lang(message: types.Message):
     user_id = message.from_user.id
     user_lang[user_id] = "ru" if "Русский" in message.text else "en"
-    users.add(user_id)
 
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
 
-    # ===== ПЕРСОНАЖ =====
-    if user_lang[user_id] == "ru":
+    try:
+        if user_lang[user_id] == "ru":
+            text = (
+                "👋 Привет! Я Dropix\n\n"
+                "🤖 Твой личный помощник для скачивания контента\n\n"
+                "📥 Я помогу скачать с:\n"
+                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+                "⚡ Просто отправь ссылку — и я всё сделаю за тебя\n\n"
+                "🔥 Быстро. Просто. Без лишнего."
+            )
+            photo = InputFile("welcome_ru.jpg")
 
-        text = (
-            "👋 Привет! Я Dropix\n\n"
-            "🤖 Твой личный помощник для скачивания контента\n\n"
-            "📥 Я помогу тебе скачать:\n"
-            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-            "⚡ Просто отправь ссылку — и я всё сделаю за тебя\n\n"
-            "🔥 Быстро. Просто. Без лишнего."
-        )
+        else:
+            text = (
+                "👋 Hey! I'm Dropix\n\n"
+                "🤖 Your personal download assistant\n\n"
+                "📥 I can download from:\n"
+                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+                "⚡ Just send a link — I’ll handle everything\n\n"
+                "🔥 Fast. Simple. No hassle."
+            )
+            photo = InputFile("welcome_en.jpg")
 
-        photo = InputFile("/mnt/data/0C31C239-D120-45A6-9A5D-580525088A1A.jpeg")
+        await message.answer_photo(photo, caption=text, reply_markup=kb)
 
-    else:
-
-        text = (
-            "👋 Hey! I'm Dropix\n\n"
-            "🤖 Your personal download assistant\n\n"
-            "📥 I can download from:\n"
-            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-            "⚡ Just send me a link — I’ll handle everything\n\n"
-            "🔥 Fast. Simple. No hassle."
-        )
-
-        photo = InputFile("/mnt/data/973C20F9-1D64-449E-9D1C-B596684A9432.jpeg")
-
-    await message.answer_photo(photo, caption=text, reply_markup=kb)
+    except Exception as e:
+        await message.answer(f"⚠️ Image error: {e}\n\n{text}", reply_markup=kb)
 
 # ===== PLATFORM =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
 async def choose_platform(message: types.Message):
     user_platform[message.from_user.id] = message.text
-    await message.answer("📥 Send link" if user_lang.get(message.from_user.id) == "en" else "📥 Отправь ссылку")
+
+    if user_lang.get(message.from_user.id) == "en":
+        await message.answer("📥 Send link")
+    else:
+        await message.answer("📥 Отправь ссылку")
 
 # ===== LINK =====
-@dp.message_handler(lambda m: "http" in m.text)
+@dp.message_handler(lambda m: m.text and "http" in m.text)
 async def handle_link(message: types.Message):
     user_id = message.from_user.id
 
@@ -85,7 +87,10 @@ async def handle_link(message: types.Message):
         await message.answer("❌ Choose platform first")
         return
 
-    await message.answer("⏳ Processing..." if user_lang.get(user_id) == "en" else "⏳ Обрабатываю...")
+    if user_lang.get(user_id) == "en":
+        await message.answer("⏳ Processing...")
+    else:
+        await message.answer("⏳ Обрабатываю...")
 
     try:
         if platform == "▶️ YouTube":
@@ -103,7 +108,10 @@ async def handle_link(message: types.Message):
                 InlineKeyboardButton("Preview", callback_data="preview")
             )
 
-            await message.answer("Choose quality:" if user_lang.get(user_id) == "en" else "Выбери качество:", reply_markup=kb)
+            if user_lang.get(user_id) == "en":
+                await message.answer("📥 Choose quality:", reply_markup=kb)
+            else:
+                await message.answer("📥 Выбери качество:", reply_markup=kb)
 
         else:
             ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
@@ -111,12 +119,15 @@ async def handle_link(message: types.Message):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([message.text])
 
-            file = glob.glob("video.*")[0]
+            files = glob.glob("video.*")
+            if not files:
+                await message.answer("❌ Ошибка загрузки")
+                return
 
-            with open(file, "rb") as f:
+            with open(files[0], "rb") as f:
                 await message.answer_video(f)
 
-            os.remove(file)
+            os.remove(files[0])
             await after_download(user_id)
 
     except Exception as e:
@@ -194,7 +205,7 @@ async def callbacks(callback: types.CallbackQuery):
     except Exception as e:
         await bot.send_message(user_id, f"❌ {e}")
 
-# ===== МОНЕТИЗАЦИЯ =====
+# ===== AFTER DOWNLOAD =====
 async def after_download(user_id):
     bot_username = (await bot.get_me()).username
     lang = user_lang.get(user_id, "ru")
@@ -203,16 +214,13 @@ async def after_download(user_id):
 
     if lang == "ru":
         text = "🔥 Готово!\n\n🙏 Хочешь поддержать Dropix?"
-
         kb.add(
             InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
             InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
             InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
         )
-
     else:
         text = "🔥 Done!\n\n🙏 Want to support Dropix?"
-
         kb.add(
             InlineKeyboardButton("❤️ $0.5", callback_data="donate_50"),
             InlineKeyboardButton("🔥 $1", callback_data="donate_100"),
@@ -228,7 +236,3 @@ async def after_download(user_id):
 # ===== RUN =====
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
-    @dp.message_handler(content_types=['photo'])
-async def get_file_id(message: types.Message):
-    file_id = message.photo[-1].file_id
-    await message.answer(f"FILE_ID:\n{file_id}")
