@@ -4,6 +4,12 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
 )
+from aiogram.utils import executor
+)
+from aiogram.utils import executor  # ← ВОТ ЭТО ДОБАВЬ
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
+)
 import os
 
 TOKEN = os.getenv("TOKEN")
