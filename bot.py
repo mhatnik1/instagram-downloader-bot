@@ -1,10 +1,7 @@
 import os
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton,
-    InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
-)
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
 TOKEN = os.getenv("TOKEN")
@@ -12,112 +9,130 @@ TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-ADMIN_ID = 5151695449  # <-- ВСТАВЬ СВОЙ ID
-
-settings = {
-    "donate_amount": 10000
-}
-
-users = set()
-
-# ===== КНОПКИ =====
-
-platform_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-platform_keyboard.add(
-    KeyboardButton("📸 Instagram"),
-    KeyboardButton("🎵 TikTok"),
-    KeyboardButton("▶️ YouTube")
-)
-platform_keyboard.add(
-    KeyboardButton("⭐ Поддержать"),
-    KeyboardButton("📢 Поделиться")
-)
+user_data = {}
 
 # ===== START =====
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    users.add(message.from_user.id)
-
     await message.answer(
-        "🚀 Выбери платформу:\n\n"
-        "📸 Instagram\n🎵 TikTok\n▶️ YouTube\n\n"
-        "⬇️ Скачивай в максимальном качестве",
-        reply_markup=platform_keyboard
+        "🚀 YouTube Downloader PRO\n\n"
+        "📥 Отправь ссылку на видео\n"
+        "🎯 Получи выбор качества + MP3"
     )
 
-# ===== ДОНАТ =====
-@dp.message_handler(lambda m: m.text == "⭐ Поддержать")
-async def donate(message: types.Message):
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("⭐ Поддержать", callback_data="donate")
-    )
+# ===== ПОЛУЧЕНИЕ ССЫЛКИ =====
+@dp.message_handler(lambda m: "youtube.com" in m.text or "youtu.be" in m.text)
+async def handle_link(message: types.Message):
+    url = message.text
 
-    await message.answer(
-        "💎 Бот бесплатный\nПоддержка по желанию ❤️",
-        reply_markup=kb
-    )
+    await message.answer("⏳ Получаю информацию...")
 
-@dp.callback_query_handler(lambda c: c.data == "donate")
-async def donate_handler(callback_query: types.CallbackQuery):
-    await bot.send_invoice(
-        chat_id=callback_query.from_user.id,
-        title="Поддержка",
-        description="Спасибо ❤️",
-        payload="donate",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label="Поддержка", amount=settings["donate_amount"])],
-        start_parameter="donate"
-    )
-
-# ===== ПОДЕЛИТЬСЯ =====
-@dp.message_handler(lambda m: m.text == "📢 Поделиться")
-async def share(message: types.Message):
-    bot_username = (await bot.get_me()).username
-
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton(
-            "📢 Отправить другу",
-            url=f"https://t.me/{bot_username}"
-        )
-    )
-
-    await message.answer("Поделись ботом 🚀", reply_markup=kb)
-
-# ===== ВЫБОР ПЛАТФОРМЫ =====
-user_platform = {}
-
-@dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
-async def choose_platform(message: types.Message):
-    user_platform[message.from_user.id] = message.text
-
-    await message.answer("📥 Отправь ссылку")
-
-# ===== СКАЧИВАНИЕ =====
-def download_video(url):
-    ydl_opts = {
-        'outtmpl': 'video.%(ext)s',
-        'format': 'best'
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-
-    return "video.mp4"
-
-@dp.message_handler(lambda m: "http" in m.text)
-async def download_handler(message: types.Message):
-    users.add(message.from_user.id)
-
-    await message.answer("⏳ Загружаю...")
+    ydl_opts = {'quiet': True}
 
     try:
-        file_path = download_video(message.text)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-        with open(file_path, "rb") as video:
-            await message.answer_video(video)
+        user_data[message.from_user.id] = {
+            "url": url,
+            "info": info
+        }
 
-        # КНОПКА ШАРИНГА
+        title = info.get("title", "Видео")
+        thumbnail = info.get("thumbnail")
+        duration = info.get("duration", 0)
+
+        formats = info.get("formats", [])
+
+        # Фильтр качеств
+        qualities = {}
+        for f in formats:
+            if f.get("height") and f.get("filesize"):
+                h = f.get("height")
+                size = f.get("filesize") // (1024 * 1024)
+                qualities[h] = size
+
+        text = f"🎬 {title}\n\n📥 Доступные качества:\n\n"
+
+        kb = InlineKeyboardMarkup(row_width=2)
+
+        for q in sorted(qualities.keys()):
+            text += f"✅ {q}p ~ {qualities[q]}MB\n"
+            kb.insert(
+                InlineKeyboardButton(
+                    f"📹 {q}p",
+                    callback_data=f"video_{q}"
+                )
+            )
+
+        kb.add(
+            InlineKeyboardButton("🎧 MP3", callback_data="mp3"),
+            InlineKeyboardButton("🖼 Превью", callback_data="preview")
+        )
+
+        if thumbnail:
+            await message.answer_photo(thumbnail, caption=text, reply_markup=kb)
+        else:
+            await message.answer(text, reply_markup=kb)
+
+    except:
+        await message.answer("❌ Ошибка при получении данных")
+
+# ===== CALLBACK =====
+@dp.callback_query_handler(lambda c: True)
+async def callbacks(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    data = callback.data
+
+    if user_id not in user_data:
+        await callback.message.answer("❌ Сначала отправь ссылку")
+        return
+
+    url = user_data[user_id]["url"]
+    info = user_data[user_id]["info"]
+
+    await callback.message.answer("⏳ Скачиваю...")
+
+    try:
+        if data.startswith("video_"):
+            quality = data.split("_")[1]
+
+            ydl_opts = {
+                'format': f'bestvideo[height<={quality}]+bestaudio/best',
+                'outtmpl': 'video.%(ext)s',
+                'merge_output_format': 'mp4'
+            }
+
+            filename = "video.mp4"
+
+        elif data == "mp3":
+            ydl_opts = {
+                'format': 'bestaudio',
+                'outtmpl': 'audio.%(ext)s',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                }]
+            }
+
+            filename = "audio.mp3"
+
+        elif data == "preview":
+            thumbnail = info.get("thumbnail")
+            if thumbnail:
+                await bot.send_photo(user_id, thumbnail)
+            return
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        with open(filename, "rb") as f:
+            if data == "mp3":
+                await bot.send_audio(user_id, f)
+            else:
+                await bot.send_video(user_id, f)
+
+        # 🔥 ШАРИНГ
         bot_username = (await bot.get_me()).username
 
         kb = InlineKeyboardMarkup().add(
@@ -127,13 +142,14 @@ async def download_handler(message: types.Message):
             )
         )
 
-        await message.answer(
+        await bot.send_message(
+            user_id,
             "🔥 Понравилось? Поделись с другом:",
             reply_markup=kb
         )
 
     except Exception as e:
-        await message.answer("❌ Ошибка загрузки")
+        await bot.send_message(user_id, "❌ Ошибка скачивания")
 
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
