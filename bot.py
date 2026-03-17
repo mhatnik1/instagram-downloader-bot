@@ -36,6 +36,10 @@ TEXTS = {
 def t(user_id, key):
     return TEXTS.get(user_lang.get(user_id, "ru"))[key]
 
+# ===== FIX: УБИРАЕМ WEBHOOK =====
+async def on_startup(dp):
+    await bot.delete_webhook(drop_pending_updates=True)
+
 # ===== START =====
 lang_kb = ReplyKeyboardMarkup(resize_keyboard=True)
 lang_kb.add("🇷🇺 Русский", "🇬🇧 English")
@@ -53,29 +57,34 @@ async def set_lang(message: types.Message):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
 
-    if user_lang[user_id] == "ru":
-        text = (
-            "🔥 Добро пожаловать!\n\n"
-            "🚀 Это быстрый и бесплатный загрузчик\n\n"
-            "📥 Скачивай видео и музыку из:\n"
-            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-            "⚡ Просто отправь ссылку и получи результат за секунды"
-        )
+    try:
+        if user_lang[user_id] == "ru":
+            text = (
+                "🔥 Добро пожаловать!\n\n"
+                "🚀 Это быстрый и бесплатный загрузчик\n\n"
+                "📥 Скачивай видео и музыку из:\n"
+                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+                "⚡ Просто отправь ссылку и получи результат за секунды"
+            )
 
-        with open("welcome_ru.jpg", "rb") as photo:
-            await message.answer_photo(photo, caption=text, reply_markup=kb)
+            with open("welcome_ru.jpg", "rb") as photo:
+                await message.answer_photo(photo, caption=text, reply_markup=kb)
 
-    else:
-        text = (
-            "🔥 Welcome!\n\n"
-            "🚀 This is a fast and free downloader\n\n"
-            "📥 Download videos & music from:\n"
-            "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
-            "⚡ Just send a link and get your file in seconds"
-        )
+        else:
+            text = (
+                "🔥 Welcome!\n\n"
+                "🚀 This is a fast and free downloader\n\n"
+                "📥 Download videos & music from:\n"
+                "📸 Instagram • 🎵 TikTok • ▶️ YouTube\n\n"
+                "⚡ Just send a link and get your file in seconds"
+            )
 
-        with open("welcome_en.jpg", "rb") as photo:
-            await message.answer_photo(photo, caption=text, reply_markup=kb)
+            with open("welcome_en.jpg", "rb") as photo:
+                await message.answer_photo(photo, caption=text, reply_markup=kb)
+
+    except:
+        # если нет картинки — просто текст
+        await message.answer(text, reply_markup=kb)
 
 # ===== PLATFORM =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
@@ -143,7 +152,6 @@ async def callbacks(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
-    # ===== ДОНАТ =====
     if data.startswith("donate_"):
         amount = int(data.split("_")[1])
 
@@ -181,12 +189,10 @@ async def callbacks(callback: types.CallbackQuery):
                 await bot.send_message(user_id, "❌ Ошибка")
                 return
 
-            video_file = files[0]
-
-            with open(video_file, "rb") as f:
+            with open(files[0], "rb") as f:
                 await bot.send_video(user_id, f)
 
-            os.remove(video_file)
+            os.remove(files[0])
 
         elif data == "mp3":
             ydl_opts = {
@@ -202,12 +208,10 @@ async def callbacks(callback: types.CallbackQuery):
                 await bot.send_message(user_id, "❌ Ошибка")
                 return
 
-            audio_file = files[0]
-
-            with open(audio_file, "rb") as f:
+            with open(files[0], "rb") as f:
                 await bot.send_audio(user_id, f)
 
-            os.remove(audio_file)
+            os.remove(files[0])
 
         elif data == "preview":
             thumb = user_data[user_id]["info"].get("thumbnail")
@@ -231,8 +235,7 @@ async def after_download(user_id):
         text = (
             "🔥 Готово!\n\n"
             "❤️ Бот бесплатный и работает благодаря пользователям\n\n"
-            "🙏 Если тебе помогло — можешь отблагодарить\n"
-            "Даже небольшой донат помогает поддерживать сервис"
+            "🙏 Если тебе помогло — можешь отблагодарить"
         )
 
         kb.add(
@@ -249,13 +252,12 @@ async def after_download(user_id):
         text = (
             "🔥 Done!\n\n"
             "❤️ This bot is free and supported by users\n\n"
-            "🙏 If it helped you — you can support\n"
-            "Even a small tip makes a difference"
+            "🙏 If it helped you — you can support"
         )
 
         kb.add(
             InlineKeyboardButton("❤️ $0.5", callback_data="donate_50"),
-            InlineKeyboardButton("🔥 $1 (most popular)", callback_data="donate_100"),
+            InlineKeyboardButton("🔥 $1", callback_data="donate_100"),
             InlineKeyboardButton("👑 $2.5", callback_data="donate_250"),
         )
 
@@ -267,8 +269,4 @@ async def after_download(user_id):
 
 # ===== RUN =====
 if __name__ == "__main__":
-    while True:
-        try:
-            executor.start_polling(dp, skip_updates=True)
-        except Exception as e:
-            print("Ошибка:", e)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
