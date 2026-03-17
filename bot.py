@@ -144,31 +144,46 @@ async def handle_link(message: types.Message):
 
     await message.answer(t(user_id, "processing"))
 
-    try:
-        if platform == "▶️ YouTube":
-            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-                info = ydl.extract_info(message.text, download=False)
+try:
+    if data.startswith("video_"):
+        q = data.split("_")[1]
 
-            user_data[user_id] = {"url": message.text, "info": info}
+        ydl_opts = {
+            'format': f'bestvideo[height<={q}]+bestaudio/best',
+            'outtmpl': 'video.%(ext)s',
+            'merge_output_format': 'mp4'
+        }
 
-            kb = InlineKeyboardMarkup(row_width=2)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-            for q in [144, 360, 720]:
-                kb.insert(InlineKeyboardButton(f"{q}p", callback_data=f"video_{q}"))
+        import glob
+        video_file = glob.glob("video.*")[0]
 
-            kb.add(
-                InlineKeyboardButton("MP3", callback_data="mp3"),
-                InlineKeyboardButton("Preview", callback_data="preview")
-            )
+        with open(video_file, "rb") as f:
+            await bot.send_video(user_id, f)
 
-            await message.answer(t(user_id, "choose_quality"), reply_markup=kb)
+    elif data == "mp3":
+        ydl_opts = {
+            'format': 'bestaudio',
+            'outtmpl': 'audio.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+            }]
+        }
 
-        else:
-            ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([message.text])
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-            video_file = glob.glob("video.*")[0]
+        import glob
+        audio_file = glob.glob("audio.*")[0]
+
+        with open(audio_file, "rb") as f:
+            await bot.send_audio(user_id, f)
+
+except Exception as e:
+    await bot.send_message(user_id, f"❌ Ошибка: {e}")
 
 with open(video_file, "rb") as f:
                 await message.answer_video(f)
