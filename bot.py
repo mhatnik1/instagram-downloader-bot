@@ -3,8 +3,8 @@ import glob
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton,
-    InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+    ReplyKeyboardMarkup, InlineKeyboardMarkup,
+    InlineKeyboardButton, LabeledPrice
 )
 from aiogram.utils import executor
 
@@ -13,51 +13,40 @@ TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-# ===== ХРАНЕНИЕ =====
 users = set()
 user_data = {}
 user_platform = {}
 user_lang = {}
-user_actions = {}
 
-DONATE_AMOUNT = 100
+DONATE_AMOUNT = 100  # ~1$
 
-# ===== ПЕРЕВОДЫ =====
 TEXTS = {
     "ru": {
-        "start": "🚀 MULTI DOWNLOADER\n\n📥 Выбери платформу",
+        "start": "🚀 Бесплатный загрузчик\n\n📥 Выбери платформу",
         "send_link": "📥 Отправь ссылку",
         "processing": "⏳ Обрабатываю...",
-        "error": "❌ Ошибка",
         "choose_quality": "📥 Выбери качество:",
-        "done": "🔥 Готово!\n\n❤️ Бот бесплатный",
-        "donate": "⭐ Поддержать",
-        "share": "📢 Поделиться",
-        "support_text": "💎 Поддержка по желанию ❤️"
+        "thanks": "❤️ Спасибо, что используешь бота"
     },
     "en": {
-        "start": "🚀 MULTI DOWNLOADER\n\n📥 Choose platform",
+        "start": "🚀 Free downloader\n\n📥 Choose platform",
         "send_link": "📥 Send link",
         "processing": "⏳ Processing...",
-        "error": "❌ Error",
         "choose_quality": "📥 Choose quality:",
-        "done": "🔥 Done!\n\n❤️ Free bot",
-        "donate": "⭐ Support",
-        "share": "📢 Share",
-        "support_text": "💎 Support if you want ❤️"
+        "thanks": "❤️ Thanks for using the bot"
     }
 }
 
 def t(user_id, key):
     return TEXTS.get(user_lang.get(user_id, "ru"))[key]
 
-# ===== ЯЗЫК =====
+# ===== START =====
 lang_kb = ReplyKeyboardMarkup(resize_keyboard=True)
 lang_kb.add("🇷🇺 Русский", "🇬🇧 English")
 
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
-    await message.answer("🌍 Choose language / Выбери язык", reply_markup=lang_kb)
+    await message.answer("🌍 Choose language", reply_markup=lang_kb)
 
 @dp.message_handler(lambda m: m.text in ["🇷🇺 Русский", "🇬🇧 English"])
 async def set_lang(message: types.Message):
@@ -67,47 +56,16 @@ async def set_lang(message: types.Message):
 
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📸 Instagram", "🎵 TikTok", "▶️ YouTube")
-    kb.add(t(user_id, "donate"), t(user_id, "share"))
 
     await message.answer(t(user_id, "start"), reply_markup=kb)
 
-# ===== ПЛАТФОРМА =====
+# ===== PLATFORM =====
 @dp.message_handler(lambda m: m.text in ["📸 Instagram", "🎵 TikTok", "▶️ YouTube"])
 async def choose_platform(message: types.Message):
     user_platform[message.from_user.id] = message.text
     await message.answer(t(message.from_user.id, "send_link"))
 
-# ===== ДОНАТ =====
-@dp.message_handler(lambda m: m.text in ["⭐ Поддержать", "⭐ Support"])
-async def donate(message: types.Message):
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton(t(message.from_user.id, "donate"), callback_data="donate")
-    )
-    await message.answer(t(message.from_user.id, "support_text"), reply_markup=kb)
-
-@dp.callback_query_handler(lambda c: c.data == "donate")
-async def donate_callback(callback: types.CallbackQuery):
-    await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="Support",
-        description="❤️",
-        payload="donate",
-        provider_token="",
-        currency="XTR",
-        prices=[LabeledPrice(label="Support", amount=DONATE_AMOUNT)],
-        start_parameter="donate"
-    )
-
-# ===== ПОДЕЛИТЬСЯ =====
-@dp.message_handler(lambda m: m.text in ["📢 Поделиться", "📢 Share"])
-async def share(message: types.Message):
-    bot_username = (await bot.get_me()).username
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("📢 Share", url=f"https://t.me/{bot_username}")
-    )
-    await message.answer("🚀", reply_markup=kb)
-
-# ===== ССЫЛКА =====
+# ===== LINK =====
 @dp.message_handler(lambda m: "http" in m.text)
 async def handle_link(message: types.Message):
     user_id = message.from_user.id
@@ -140,18 +98,14 @@ async def handle_link(message: types.Message):
             await message.answer(t(user_id, "choose_quality"), reply_markup=kb)
 
         else:
-            ydl_opts = {
-                'format': 'best',
-                'outtmpl': 'video.%(ext)s'
-            }
+            ydl_opts = {'format': 'best', 'outtmpl': 'video.%(ext)s'}
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([message.text])
 
             files = glob.glob("video.*")
-
             if not files:
-                await message.answer("❌ Ошибка загрузки видео")
+                await message.answer("❌ Ошибка загрузки")
                 return
 
             video_file = files[0]
@@ -160,7 +114,6 @@ async def handle_link(message: types.Message):
                 await message.answer_video(f)
 
             os.remove(video_file)
-
             await after_download(user_id)
 
     except Exception as e:
@@ -172,12 +125,23 @@ async def callbacks(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
+    if data.startswith("donate"):
+        await bot.send_invoice(
+            chat_id=user_id,
+            title="Support ❤️",
+            description="Спасибо за поддержку",
+            payload="donate",
+            provider_token="",
+            currency="XTR",
+            prices=[LabeledPrice(label="Support", amount=DONATE_AMOUNT)],
+            start_parameter="donate"
+        )
+        return
+
     if user_id not in user_data:
         return
 
     url = user_data[user_id]["url"]
-
-    await bot.send_message(user_id, "⏳ Downloading...")
 
     try:
         if data.startswith("video_"):
@@ -192,9 +156,8 @@ async def callbacks(callback: types.CallbackQuery):
                 ydl.download([url])
 
             files = glob.glob("video.*")
-
             if not files:
-                await bot.send_message(user_id, "❌ Ошибка загрузки видео")
+                await bot.send_message(user_id, "❌ Ошибка")
                 return
 
             video_file = files[0]
@@ -214,9 +177,8 @@ async def callbacks(callback: types.CallbackQuery):
                 ydl.download([url])
 
             files = glob.glob("audio.*")
-
             if not files:
-                await bot.send_message(user_id, "❌ Ошибка загрузки аудио")
+                await bot.send_message(user_id, "❌ Ошибка")
                 return
 
             audio_file = files[0]
@@ -237,21 +199,28 @@ async def callbacks(callback: types.CallbackQuery):
     except Exception as e:
         await bot.send_message(user_id, f"❌ {e}")
 
-# ===== ПОСЛЕ СКАЧИВАНИЯ =====
+# ===== УМНАЯ МОНЕТИЗАЦИЯ =====
 async def after_download(user_id):
     bot_username = (await bot.get_me()).username
 
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        InlineKeyboardButton("⭐ Support", callback_data="donate"),
-        InlineKeyboardButton("📢 Share", url=f"https://t.me/{bot_username}")
+    text = (
+        "🔥 Готово!\n\n"
+        "❤️ Бот бесплатный и работает благодаря пользователям\n\n"
+        "🙏 Если тебе помогло — можешь отблагодарить\n"
+        "Это сильно помогает поддерживать сервис"
     )
 
-    await bot.send_message(
-        user_id,
-        f"🔥 Done!\n👥 {len(users)} users",
-        reply_markup=kb
+    kb = InlineKeyboardMarkup(row_width=1)
+
+    kb.add(
+        InlineKeyboardButton("❤️ Отблагодарить ($1)", callback_data="donate")
     )
+
+    kb.add(
+        InlineKeyboardButton("📢 Поделиться ботом", url=f"https://t.me/{bot_username}")
+    )
+
+    await bot.send_message(user_id, text, reply_markup=kb)
 
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
