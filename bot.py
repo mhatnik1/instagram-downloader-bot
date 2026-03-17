@@ -183,7 +183,13 @@ async def callbacks(callback: types.CallbackQuery):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            video_file = glob.glob("video.*")[0]
+            files = glob.glob("video.*")
+
+if not files:
+    await bot.send_message(user_id, "❌ Ошибка загрузки видео")
+    return
+
+video_file = files[0]
 
             with open(video_file, "rb") as f:
                 await bot.send_video(user_id, f)
