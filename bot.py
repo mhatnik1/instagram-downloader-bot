@@ -95,8 +95,15 @@ async def donate(callback: types.CallbackQuery):
     )
 
 
-if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    if __name__ == "__main__":
+    while True:
+        try:
+            executor.start_polling(dp, skip_updates=True)
+        except Exception as e:
+            print("Ошибка:", e)
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer("Привет")
+import logging
+
+logging.basicConfig(level=logging.INFO)
