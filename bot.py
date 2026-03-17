@@ -1,3 +1,4 @@
+import glob
 import os
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
@@ -167,7 +168,9 @@ async def handle_link(message: types.Message):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([message.text])
 
-            with open("video.mp4", "rb") as f:
+            video_file = glob.glob("video.*")[0]
+
+with open(video_file, "rb") as f:
                 await message.answer_video(f)
 
             await after_download(user_id)
