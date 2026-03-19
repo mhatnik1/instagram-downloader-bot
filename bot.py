@@ -4,7 +4,8 @@ import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
     ReplyKeyboardMarkup, InlineKeyboardMarkup,
-    InlineKeyboardButton, InputFile
+    InlineKeyboardButton, InputFile, LabeledPrice,
+    BotCommand, MenuButtonCommands
 )
 from aiogram.utils import executor
 
@@ -14,6 +15,20 @@ bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
 BOT_NAME = "iGramDrop"
+
+# ===== STARTUP =====
+async def on_startup(dp):
+    # команды
+    commands = [
+        BotCommand("start", "Start bot"),
+        BotCommand("donate", "Support bot"),
+    ]
+    await bot.set_my_commands(commands)
+
+    # кнопка меню слева
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonCommands()
+    )
 
 # ===== START =====
 @dp.message_handler(commands=['start'])
@@ -38,40 +53,68 @@ async def start(message: types.Message):
 async def restart(message: types.Message):
     await start(message)
 
-# ===== DONATE =====
+# ===== DONATE MENU =====
 @dp.message_handler(lambda m: m.text == "💎 Donate")
 async def donate(message: types.Message):
-    kb = InlineKeyboardMarkup(row_width=3)
+    kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
-        InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
-        InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
+        InlineKeyboardButton("❤️ 50 Stars", callback_data="donate_50"),
+        InlineKeyboardButton("🔥 100 Stars", callback_data="donate_100"),
+        InlineKeyboardButton("👑 250 Stars", callback_data="donate_250"),
     )
-    await message.answer("💎 Поддержать проект", reply_markup=kb)
+    await message.answer("💎 Choose amount:", reply_markup=kb)
 
-# ===== LINK =====
+# ===== DONATE CALLBACK =====
+@dp.callback_query_handler(lambda c: c.data.startswith("donate"))
+async def donate_callback(callback: types.CallbackQuery):
+    amount = int(callback.data.split("_")[1])
+
+    prices = [LabeledPrice(label="Stars", amount=amount)]
+
+    await bot.send_invoice(
+        chat_id=callback.from_user.id,
+        title="Support iGramDrop 💎",
+        description="Thank you for your support!",
+        payload="donate_payload",
+        provider_token="",
+        currency="XTR",
+        prices=prices
+    )
+
+    await callback.answer()
+
+# ===== PRE CHECKOUT =====
+@dp.pre_checkout_query_handler(lambda query: True)
+async def pre_checkout(pre_checkout_q: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
+
+# ===== SUCCESS PAYMENT =====
+@dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
+async def successful_payment(message: types.Message):
+    await message.answer("🔥 Payment successful! Thank you ❤️")
+
+# ===== DOWNLOAD =====
 @dp.message_handler(lambda m: m.text and "http" in m.text)
 async def download(message: types.Message):
     url = message.text
     user_id = message.from_user.id
 
-    msg = await message.answer("⏳ Скачиваю...")
+    msg = await message.answer("⏳ Downloading...")
 
     try:
         ydl_opts = {
             'outtmpl': 'media.%(ext)s',
             'format': 'best',
-            'quiet': True,
-            'noplaylist': False
+            'quiet': True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            ydl.extract_info(url, download=True)
 
         files = glob.glob("media.*")
 
         if not files:
-            await msg.edit_text("❌ Не удалось скачать")
+            await msg.edit_text("❌ Failed to download")
             return
 
         for file in files:
@@ -87,32 +130,22 @@ async def download(message: types.Message):
 
         await msg.delete()
 
-        # ===== AFTER DOWNLOAD =====
-        kb = InlineKeyboardMarkup(row_width=3)
+        kb = InlineKeyboardMarkup(row_width=1)
         kb.add(
-            InlineKeyboardButton("❤️ 50⭐", callback_data="donate_50"),
-            InlineKeyboardButton("🔥 100⭐", callback_data="donate_100"),
-            InlineKeyboardButton("👑 250⭐", callback_data="donate_250"),
-        )
-
-        kb.add(
-            InlineKeyboardButton("📢 Share", url=f"https://t.me/{(await bot.get_me()).username}")
+            InlineKeyboardButton("❤️ 50 Stars", callback_data="donate_50"),
+            InlineKeyboardButton("🔥 100 Stars", callback_data="donate_100"),
+            InlineKeyboardButton("👑 250 Stars", callback_data="donate_250"),
         )
 
         await bot.send_message(
             user_id,
-            f"🔥 Готово!\n\n🙏 Поддержать {BOT_NAME}?",
+            f"🔥 Done!\n\n💎 Support {BOT_NAME}?",
             reply_markup=kb
         )
 
-    except Exception as e:
-        await msg.edit_text("❌ Ошибка скачивания")
-
-# ===== CALLBACK =====
-@dp.callback_query_handler(lambda c: c.data.startswith("donate"))
-async def donate_callback(callback: types.CallbackQuery):
-    await callback.answer("Спасибо ❤️")
+    except:
+        await msg.edit_text("❌ Download error")
 
 # ===== RUN =====
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
