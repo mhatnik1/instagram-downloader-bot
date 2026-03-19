@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 import yt_dlp
 
-API_TOKEN = "ТВОЙ_ТОКЕН_СЮДА"
+API_TOKEN = "8730480600:AAFItJ_0cxbOLbVsCjmpGljoEUsns4jG1V8"
 
 logging.basicConfig(level=logging.INFO)
 
