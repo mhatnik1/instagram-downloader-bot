@@ -1,151 +1,120 @@
+import logging
 import os
-import glob
-import yt_dlp
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import (
-    ReplyKeyboardMarkup, InlineKeyboardMarkup,
-    InlineKeyboardButton, InputFile, LabeledPrice,
-    BotCommand, MenuButtonCommands
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    LabeledPrice, BotCommand, MenuButtonCommands
 )
-from aiogram.utils import executor
+import yt_dlp
 
-TOKEN = os.getenv("TOKEN")
+API_TOKEN = "ТВОЙ_ТОКЕН_СЮДА"
 
-bot = Bot(token=TOKEN, parse_mode="HTML")
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-BOT_NAME = "iGramDrop"
+# ====== КНОПКИ ======
+main_kb = ReplyKeyboardMarkup(resize_keyboard=True)
+main_kb.add(
+    KeyboardButton("📸 Instagram"),
+    KeyboardButton("🎵 TikTok")
+)
+main_kb.add(
+    KeyboardButton("🔄 Restart"),
+    KeyboardButton("💎 Donate")
+)
 
-# ===== STARTUP =====
-async def on_startup(dp):
-    # команды
-    commands = [
-        BotCommand("start", "Start bot"),
-        BotCommand("donate", "Support bot"),
-    ]
-    await bot.set_my_commands(commands)
-
-    # кнопка меню слева
-    await bot.set_chat_menu_button(
-        menu_button=MenuButtonCommands()
-    )
-
-# ===== START =====
+# ====== СТАРТ ======
 @dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row("📸 Instagram", "🎵 TikTok")
-    kb.row("🔄 Restart", "💎 Donate")
-
-    photo = InputFile("photo_2026-03-17 17.40.44.jpeg")
-
-    text = (
-        f"👋 <b>{BOT_NAME}</b>\n\n"
-        "📥 Instagram • TikTok\n"
-        "🎬 Фото • Видео • Карусели\n\n"
-        "⚡ Отправь ссылку и я всё скачаю"
+async def start_cmd(message: types.Message):
+    await message.answer_photo(
+        photo=open("start.jpg", "rb"),  # твоя картинка
+        caption="👋 Welcome!\n\n📥 Send me Instagram or TikTok link\n⚡ Fast download",
+        reply_markup=main_kb
     )
 
-    await message.answer_photo(photo, caption=text, reply_markup=kb)
-
-# ===== RESTART =====
-@dp.message_handler(lambda m: m.text == "🔄 Restart")
-async def restart(message: types.Message):
-    await start(message)
-
-# ===== DONATE MENU =====
-@dp.message_handler(lambda m: m.text == "💎 Donate")
+# ====== DONATE ======
+@dp.message_handler(lambda message: message.text == "💎 Donate")
 async def donate(message: types.Message):
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        InlineKeyboardButton("❤️ 50 Stars", callback_data="donate_50"),
-        InlineKeyboardButton("🔥 100 Stars", callback_data="donate_100"),
-        InlineKeyboardButton("👑 250 Stars", callback_data="donate_250"),
-    )
-    await message.answer("💎 Choose amount:", reply_markup=kb)
-
-# ===== DONATE CALLBACK =====
-@dp.callback_query_handler(lambda c: c.data.startswith("donate"))
-async def donate_callback(callback: types.CallbackQuery):
-    amount = int(callback.data.split("_")[1])
-
-    prices = [LabeledPrice(label="Stars", amount=amount)]
+    prices = [LabeledPrice(label="Support bot", amount=100)]  # 100 stars
 
     await bot.send_invoice(
-        chat_id=callback.from_user.id,
-        title="Support iGramDrop 💎",
-        description="Thank you for your support!",
+        chat_id=message.chat.id,
+        title="Support the bot 💎",
+        description="Donate to support development",
         payload="donate_payload",
-        provider_token="",
+        provider_token="",  # для Stars пусто
         currency="XTR",
         prices=prices
     )
 
-    await callback.answer()
-
-# ===== PRE CHECKOUT =====
+# ====== ОБРАБОТКА ПЛАТЕЖА ======
 @dp.pre_checkout_query_handler(lambda query: True)
 async def pre_checkout(pre_checkout_q: types.PreCheckoutQuery):
     await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
 
-# ===== SUCCESS PAYMENT =====
 @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def successful_payment(message: types.Message):
-    await message.answer("🔥 Payment successful! Thank you ❤️")
+    await message.answer("✅ Спасибо за донат!")
 
-# ===== DOWNLOAD =====
-@dp.message_handler(lambda m: m.text and "http" in m.text)
-async def download(message: types.Message):
-    url = message.text
-    user_id = message.from_user.id
+# ====== RESTART ======
+@dp.message_handler(lambda message: message.text == "🔄 Restart")
+async def restart(message: types.Message):
+    await start_cmd(message)
 
-    msg = await message.answer("⏳ Downloading...")
+# ====== СКАЧИВАНИЕ ======
+def download_video(url):
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'noplaylist': True,
+        'quiet': True
+    }
 
-    try:
-        ydl_opts = {
-            'outtmpl': 'media.%(ext)s',
-            'format': 'best',
-            'quiet': True
-        }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info)
+        return filename
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
+# ====== ЛОВИМ ССЫЛКИ ======
+@dp.message_handler()
+async def handle_message(message: types.Message):
+    text = message.text
 
-        files = glob.glob("media.*")
+    if "instagram.com" in text or "tiktok.com" in text:
+        await message.answer("⏳ Downloading...")
 
-        if not files:
-            await msg.edit_text("❌ Failed to download")
-            return
+        try:
+            file_path = download_video(text)
 
-        for file in files:
-            size = os.path.getsize(file)
+            with open(file_path, "rb") as video:
+                await message.answer_video(video)
 
-            with open(file, "rb") as f:
-                if size > 49 * 1024 * 1024:
-                    await bot.send_document(user_id, f)
-                else:
-                    await bot.send_video(user_id, f)
+            os.remove(file_path)
 
-            os.remove(file)
+        except Exception as e:
+            print(e)
+            await message.answer("❌ Download error, try again later")
 
-        await msg.delete()
+    else:
+        await message.answer("❗ Send Instagram or TikTok link")
 
-        kb = InlineKeyboardMarkup(row_width=1)
-        kb.add(
-            InlineKeyboardButton("❤️ 50 Stars", callback_data="donate_50"),
-            InlineKeyboardButton("🔥 100 Stars", callback_data="donate_100"),
-            InlineKeyboardButton("👑 250 Stars", callback_data="donate_250"),
-        )
+# ====== МЕНЮ СЛЕВА ======
+async def on_startup(dp):
+    await bot.set_my_commands([
+        BotCommand("start", "Start bot"),
+        BotCommand("donate", "Support bot")
+    ])
 
-        await bot.send_message(
-            user_id,
-            f"🔥 Done!\n\n💎 Support {BOT_NAME}?",
-            reply_markup=kb
-        )
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonCommands()
+    )
 
-    except:
-        await msg.edit_text("❌ Download error")
+# ====== ЗАПУСК ======
+if __name__ == '__main__':
+    if not os.path.exists("downloads"):
+        os.makedirs("downloads")
 
-# ===== RUN =====
-if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
